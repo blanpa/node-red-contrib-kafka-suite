@@ -1,0 +1,76 @@
+<script type="text/javascript">
+  RED.nodes.registerType('kafka-suite-admin', {
+    category: 'kafka',
+    color: '#FF9800',
+    defaults: {
+      name: { value: '' },
+      broker: { value: '', type: 'kafka-suite-broker', required: true }
+    },
+    inputs: 1,
+    outputs: 2,
+    outputLabels: ['result', 'error'],
+    icon: 'kafka.svg',
+    label: function () {
+      return this.name || 'kafka admin';
+    },
+    paletteLabel: 'kafka admin'
+  });
+</script>
+
+<script type="text/html" data-template-name="kafka-suite-admin">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-broker"><i class="fa fa-server"></i> Broker</label>
+    <input type="text" id="node-input-broker">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="kafka-suite-admin">
+  <p>Performs Kafka cluster administration operations.</p>
+
+  <h3>Inputs</h3>
+  <dl class="message-properties">
+    <dt>action <span class="property-type">string</span></dt>
+    <dd>The admin operation to perform (required). See supported actions below.</dd>
+    <dt class="optional">topic <span class="property-type">string | array</span></dt>
+    <dd>Target topic name(s) for topic operations.</dd>
+    <dt class="optional">groupId <span class="property-type">string | array</span></dt>
+    <dd>Consumer group ID(s) for group operations.</dd>
+    <dt class="optional">config <span class="property-type">object</span></dt>
+    <dd>Additional configuration (partitions, replicationFactor, configEntries).</dd>
+  </dl>
+
+  <h3>Supported Actions</h3>
+  <ul>
+    <li><code>listTopics</code> - List all topics</li>
+    <li><code>createTopic</code> - Create a topic (requires <code>msg.topic</code>)</li>
+    <li><code>deleteTopic</code> - Delete topic(s) (requires <code>msg.topic</code>)</li>
+    <li><code>describeCluster</code> - Get cluster info (brokers, controller)</li>
+    <li><code>listGroups</code> - List all consumer groups</li>
+    <li><code>describeGroup</code> - Get group details (requires <code>msg.groupId</code>)</li>
+    <li><code>fetchTopicOffsets</code> - Get partition offsets (requires <code>msg.topic</code>)</li>
+    <li><code>resetOffsets</code> - Reset group offsets (requires <code>msg.groupId</code> + <code>msg.topic</code>)</li>
+    <li><code>deleteGroup</code> - Delete consumer group(s) (requires <code>msg.groupId</code>)</li>
+  </ul>
+
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>Result
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>The operation result.</dd>
+        <dt>action <span class="property-type">string</span></dt>
+        <dd>The executed action name.</dd>
+      </dl>
+    </li>
+    <li>Error
+      <dl class="message-properties">
+        <dt>error <span class="property-type">object</span></dt>
+        <dd>Error details: <code>{ message, stack }</code></dd>
+      </dl>
+    </li>
+  </ol>
+</script>

@@ -1,0 +1,133 @@
+<script type="text/javascript">
+  RED.nodes.registerType('kafka-suite-consumer', {
+    category: 'kafka',
+    color: '#4CAF50',
+    defaults: {
+      name: { value: '' },
+      broker: { value: '', type: 'kafka-suite-broker', required: true },
+      topics: { value: '', required: true },
+      groupId: { value: '' },
+      startOffset: { value: 'latest' },
+      autoCommit: { value: true },
+      autoCommitInterval: { value: 5000, validate: RED.validators.number() },
+      messageFormat: { value: 'string' },
+      concurrency: { value: 1, validate: RED.validators.number() },
+      schemaRegistry: { value: '', type: 'kafka-suite-schema-registry' }
+    },
+    inputs: 1,
+    outputs: 1,
+    inputLabels: 'control (pause/resume)',
+    outputLabels: ['message'],
+    icon: 'kafka.svg',
+    label: function () {
+      return this.name || this.topics || 'kafka consumer';
+    },
+    paletteLabel: 'kafka consumer',
+    oneditprepare: function () {
+      function updateCommitFields() {
+        var autoCommit = $('#node-input-autoCommit').is(':checked');
+        if (autoCommit) {
+          $('.kafka-commit-fields').show();
+        } else {
+          $('.kafka-commit-fields').hide();
+        }
+      }
+      $('#node-input-autoCommit').on('change', updateCommitFields);
+      updateCommitFields();
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="kafka-suite-consumer">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-broker"><i class="fa fa-server"></i> Broker</label>
+    <input type="text" id="node-input-broker">
+  </div>
+  <div class="form-row">
+    <label for="node-input-topics"><i class="fa fa-envelope"></i> Topics</label>
+    <input type="text" id="node-input-topics" placeholder="topic1,topic2">
+  </div>
+  <div class="form-row">
+    <label for="node-input-groupId"><i class="fa fa-users"></i> Group ID</label>
+    <input type="text" id="node-input-groupId" placeholder="auto-generated if empty">
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-input-startOffset"><i class="fa fa-step-backward"></i> Start from</label>
+    <select id="node-input-startOffset">
+      <option value="latest">Latest (new messages only)</option>
+      <option value="earliest">Earliest (all messages)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-messageFormat"><i class="fa fa-file-text-o"></i> Format</label>
+    <select id="node-input-messageFormat">
+      <option value="string">String (UTF-8)</option>
+      <option value="json">JSON (auto-parse)</option>
+      <option value="raw">Raw (Buffer)</option>
+    </select>
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-input-autoCommit"><i class="fa fa-check"></i> Auto Commit</label>
+    <input type="checkbox" id="node-input-autoCommit" style="width:auto;">
+  </div>
+  <div class="kafka-commit-fields">
+    <div class="form-row">
+      <label for="node-input-autoCommitInterval"><i class="fa fa-clock-o"></i> Commit Interval</label>
+      <input type="number" id="node-input-autoCommitInterval" placeholder="5000"> ms
+    </div>
+  </div>
+  <div class="form-row">
+    <label for="node-input-concurrency"><i class="fa fa-bolt"></i> Concurrency</label>
+    <input type="number" id="node-input-concurrency" placeholder="1" min="1">
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-input-schemaRegistry"><i class="fa fa-file-code-o"></i> Schema Registry</label>
+    <input type="text" id="node-input-schemaRegistry">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="kafka-suite-consumer">
+  <p>Consumes messages from Apache Kafka topics.</p>
+
+  <h3>Outputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">string | object | buffer</span></dt>
+    <dd>The decoded message value (format depends on configuration).</dd>
+    <dt>topic <span class="property-type">string</span></dt>
+    <dd>The source Kafka topic.</dd>
+    <dt>key <span class="property-type">string | null</span></dt>
+    <dd>The message key.</dd>
+    <dt>partition <span class="property-type">number</span></dt>
+    <dd>The source partition number.</dd>
+    <dt>offset <span class="property-type">string</span></dt>
+    <dd>The message offset within the partition.</dd>
+    <dt>timestamp <span class="property-type">string</span></dt>
+    <dd>The message timestamp.</dd>
+    <dt>headers <span class="property-type">object</span></dt>
+    <dd>Message headers as key-value pairs.</dd>
+    <dt>kafka <span class="property-type">object</span></dt>
+    <dd>Consumer metadata: <code>{ consumerGroup }</code></dd>
+    <dt class="optional">commit <span class="property-type">function</span></dt>
+    <dd>Call <code>msg.commit()</code> to manually commit the offset (only when auto-commit is off).</dd>
+  </dl>
+
+  <h3>Inputs (Control)</h3>
+  <dl class="message-properties">
+    <dt>action <span class="property-type">string</span></dt>
+    <dd><code>"pause"</code> to pause consuming, <code>"resume"</code> to resume.</dd>
+  </dl>
+
+  <h3>Details</h3>
+  <p>The consumer joins a consumer group and receives messages from the configured topics.
+  Multiple consumers with the same Group ID will share partitions across instances.</p>
+  <p>When auto-commit is disabled, you must call <code>msg.commit()</code> after processing
+  each message to acknowledge it. Failing to commit will cause the message to be
+  redelivered on reconnection.</p>
+</script>

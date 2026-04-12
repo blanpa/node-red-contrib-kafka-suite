@@ -1,0 +1,128 @@
+<script type="text/javascript">
+  RED.nodes.registerType('kafka-suite-producer', {
+    category: 'kafka',
+    color: '#2196F3',
+    defaults: {
+      name: { value: '' },
+      broker: { value: '', type: 'kafka-suite-broker', required: true },
+      topic: { value: '' },
+      key: { value: '' },
+      partition: { value: '' },
+      compression: { value: 'none' },
+      acks: { value: '-1' },
+      timeout: { value: 30000, validate: RED.validators.number() },
+      schemaRegistry: { value: '', type: 'kafka-suite-schema-registry' }
+    },
+    inputs: 1,
+    outputs: 2,
+    outputLabels: ['success', 'error'],
+    icon: 'kafka.svg',
+    label: function () {
+      return this.name || this.topic || 'kafka producer';
+    },
+    paletteLabel: 'kafka producer',
+    oneditprepare: function () {
+      // Show schema registry field only if available
+      if (!this.schemaRegistry) {
+        // Keep it visible for future use
+      }
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="kafka-suite-producer">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-broker"><i class="fa fa-server"></i> Broker</label>
+    <input type="text" id="node-input-broker">
+  </div>
+  <div class="form-row">
+    <label for="node-input-topic"><i class="fa fa-envelope"></i> Topic</label>
+    <input type="text" id="node-input-topic" placeholder="topic (or set via msg.topic)">
+  </div>
+  <div class="form-row">
+    <label for="node-input-key"><i class="fa fa-key"></i> Key</label>
+    <input type="text" id="node-input-key" placeholder="message key (or set via msg.key)">
+  </div>
+  <div class="form-row">
+    <label for="node-input-partition"><i class="fa fa-th-large"></i> Partition</label>
+    <input type="text" id="node-input-partition" placeholder="auto (or set via msg.partition)">
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-input-compression"><i class="fa fa-compress"></i> Compression</label>
+    <select id="node-input-compression">
+      <option value="none">None</option>
+      <option value="gzip">GZIP</option>
+      <option value="snappy">Snappy</option>
+      <option value="lz4">LZ4</option>
+      <option value="zstd">ZSTD</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-acks"><i class="fa fa-check-circle"></i> Acks</label>
+    <select id="node-input-acks">
+      <option value="-1">All replicas (-1)</option>
+      <option value="1">Leader only (1)</option>
+      <option value="0">Fire and forget (0)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout</label>
+    <input type="number" id="node-input-timeout" placeholder="30000"> ms
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-input-schemaRegistry"><i class="fa fa-file-code-o"></i> Schema Registry</label>
+    <input type="text" id="node-input-schemaRegistry">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="kafka-suite-producer">
+  <p>Sends messages to Apache Kafka topics.</p>
+
+  <h3>Inputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">string | buffer | object</span></dt>
+    <dd>The message value to send. Objects are JSON-serialized. Arrays trigger batch mode.</dd>
+    <dt class="optional">topic <span class="property-type">string</span></dt>
+    <dd>Target topic (overrides node config).</dd>
+    <dt class="optional">key <span class="property-type">string</span></dt>
+    <dd>Message key for partitioning (overrides node config).</dd>
+    <dt class="optional">partition <span class="property-type">number</span></dt>
+    <dd>Explicit partition number (overrides node config).</dd>
+    <dt class="optional">headers <span class="property-type">object</span></dt>
+    <dd>Message headers as key-value pairs.</dd>
+    <dt class="optional">schema <span class="property-type">string</span></dt>
+    <dd>Schema Registry subject name (if Schema Registry configured).</dd>
+  </dl>
+
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>Success
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Original payload.</dd>
+        <dt>kafka <span class="property-type">object</span></dt>
+        <dd>Delivery metadata: <code>{ topic, partition, offset, timestamp, key }</code></dd>
+      </dl>
+    </li>
+    <li>Error
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Original payload.</dd>
+        <dt>error <span class="property-type">object</span></dt>
+        <dd>Error details: <code>{ message, stack }</code></dd>
+      </dl>
+    </li>
+  </ol>
+
+  <h3>Details</h3>
+  <p>The producer sends messages to the configured Kafka topic. If <code>msg.payload</code> is an array,
+  all items are sent as a batch in a single request.</p>
+  <p>When a Schema Registry is configured, payloads are automatically encoded using the
+  Confluent wire format before sending.</p>
+</script>

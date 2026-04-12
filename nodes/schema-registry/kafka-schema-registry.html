@@ -1,0 +1,81 @@
+<script type="text/javascript">
+  RED.nodes.registerType('kafka-suite-schema-registry', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      registryUrl: { value: 'http://localhost:8081', required: true },
+      schemaType: { value: 'AVRO' },
+      cacheTTL: { value: 300000, validate: RED.validators.number() },
+      autoRegister: { value: false }
+    },
+    credentials: {
+      username: { type: 'text' },
+      password: { type: 'password' }
+    },
+    label: function () {
+      return this.name || this.registryUrl || 'schema registry';
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="kafka-suite-schema-registry">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-config-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-registryUrl"><i class="fa fa-globe"></i> Registry URL</label>
+    <input type="text" id="node-config-input-registryUrl" placeholder="http://localhost:8081">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-schemaType"><i class="fa fa-file-code-o"></i> Schema Type</label>
+    <select id="node-config-input-schemaType">
+      <option value="AVRO">Avro</option>
+      <option value="JSON">JSON Schema</option>
+      <option value="PROTOBUF">Protobuf</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-cacheTTL"><i class="fa fa-clock-o"></i> Cache TTL</label>
+    <input type="number" id="node-config-input-cacheTTL" placeholder="300000"> ms
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-autoRegister"><i class="fa fa-magic"></i> Auto Register</label>
+    <input type="checkbox" id="node-config-input-autoRegister" style="width:auto;">
+    <span style="font-size:0.9em;color:#aaa;"> Automatically register schemas</span>
+  </div>
+  <hr>
+  <div class="form-row">
+    <label for="node-config-input-username"><i class="fa fa-user"></i> Username</label>
+    <input type="text" id="node-config-input-username" placeholder="API Key (optional)">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-password"><i class="fa fa-key"></i> Password</label>
+    <input type="password" id="node-config-input-password" placeholder="API Secret (optional)">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="kafka-suite-schema-registry">
+  <p>Confluent Schema Registry connection configuration.</p>
+  <p>Used by Kafka Producer and Consumer nodes to automatically encode/decode
+  messages using Avro, JSON Schema, or Protobuf schemas.</p>
+
+  <h3>Configuration</h3>
+  <dl class="message-properties">
+    <dt>Registry URL <span class="property-type">string</span></dt>
+    <dd>The Schema Registry HTTP endpoint.</dd>
+    <dt>Schema Type <span class="property-type">string</span></dt>
+    <dd>Default schema type: Avro, JSON Schema, or Protobuf.</dd>
+    <dt>Cache TTL <span class="property-type">number</span></dt>
+    <dd>How long to cache schema lookups (milliseconds).</dd>
+    <dt>Auto Register <span class="property-type">boolean</span></dt>
+    <dd>Automatically register new schemas with the registry.</dd>
+  </dl>
+
+  <h3>Authentication</h3>
+  <p>Supports HTTP Basic Auth (API Key / Secret) for Confluent Cloud Schema Registry.</p>
+
+  <h3>Requirements</h3>
+  <p>Requires the <code>@kafkajs/confluent-schema-registry</code> package:
+  <code>npm install @kafkajs/confluent-schema-registry</code></p>
+</script>

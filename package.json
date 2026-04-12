@@ -1,0 +1,61 @@
+{
+  "name": "@blanpa/node-red-contrib-kafka-suite",
+  "version": "0.1.0",
+  "description": "A comprehensive Kafka integration for Node-RED with producer, consumer, admin, and schema registry nodes. Supports all major managed Kafka services (Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, Redpanda).",
+  "keywords": [
+    "node-red",
+    "kafka",
+    "apache-kafka",
+    "confluent",
+    "producer",
+    "consumer",
+    "schema-registry",
+    "avro",
+    "streaming",
+    "iot"
+  ],
+  "author": "blanpa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blanpa/node-red-contrib-kafka-suite.git"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "node-red": {
+    "version": ">=3.0.0",
+    "nodes": {
+      "kafka-broker": "nodes/config/kafka-broker.js",
+      "kafka-producer": "nodes/producer/kafka-producer.js",
+      "kafka-consumer": "nodes/consumer/kafka-consumer.js",
+      "kafka-admin": "nodes/admin/kafka-admin.js",
+      "kafka-schema-registry": "nodes/schema-registry/kafka-schema-registry.js"
+    }
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  },
+  "optionalDependencies": {
+    "@kafkajs/confluent-schema-registry": "^3.3.0"
+  },
+  "peerDependencies": {
+    "@confluentinc/kafka-javascript": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@confluentinc/kafka-javascript": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "mocha": "^10.7.0",
+    "should": "^13.2.3",
+    "sinon": "^17.0.0",
+    "node-red": "^4.0.0",
+    "node-red-node-test-helper": "^0.3.4"
+  },
+  "scripts": {
+    "test": "mocha \"test/**/*_spec.js\" --recursive --exit --timeout 10000",
+    "test:integration": "node test/integration/docker-test.js"
+  }
+}
