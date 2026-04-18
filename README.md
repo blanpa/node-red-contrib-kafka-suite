@@ -1,4 +1,4 @@
-# @blanpa/node-red-contrib-kafka-suite
+# node-red-contrib-kafka-suite
 
 > **Status: 0.0.1 — Beta.** This release is functionally complete and end-to-end
 > tested against four Kafka distributions (Confluent CP, Redpanda PLAINTEXT,
@@ -47,11 +47,11 @@ service presets for all major managed Kafka offerings.
 ## Installation
 
 ```bash
-npm install @blanpa/node-red-contrib-kafka-suite
+npm install node-red-contrib-kafka-suite
 ```
 
 Or install via the Node-RED palette manager (search for
-`@blanpa/node-red-contrib-kafka-suite`).
+`node-red-contrib-kafka-suite`).
 
 ### Optional dependencies
 
