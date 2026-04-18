@@ -1,0 +1,29 @@
+services:
+  kafka:
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:29092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 30s
+
+  node-red:
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -ex
+        mkdir -p /data /tmp/pkg /tmp/tgz
+        cp /opt/kafka-suite/examples/test-all-nodes.json /data/flows.json
+        sed -i 's#localhost:9092#kafka:29092#g' /data/flows.json
+        sed -i 's#http://localhost:8081#http://schema-registry:8081#g' /data/flows.json
+        sed -i 's#http://localhost:8081#http://schema-registry:8081#g' /data/flows.json # idempotent
+        cp -r /opt/kafka-suite/lib /opt/kafka-suite/nodes /opt/kafka-suite/examples /opt/kafka-suite/package.json /opt/kafka-suite/README.md /opt/kafka-suite/LICENSE /tmp/pkg/
+        cd /tmp/pkg && npm pack --pack-destination /tmp/tgz
+        cd /data && npm install /tmp/tgz/*.tgz @confluentinc/kafka-javascript @kafkajs/confluent-schema-registry
+        exec node-red --userDir /data

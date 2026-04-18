@@ -1,336 +1,1081 @@
 [
-    {
-        "id": "flow-test-all",
-        "type": "tab",
-        "label": "Kafka Suite - Test All Nodes",
-        "disabled": false,
-        "info": "Test flow for all kafka-suite nodes. Tests producer, consumer, and admin operations."
-    },
-    {
-        "id": "broker-config",
-        "type": "kafka-suite-broker",
-        "name": "Local Kafka",
-        "brokers": "localhost:9092",
-        "clientId": "node-red-test",
-        "backend": "kafkajs",
-        "servicePreset": "self-hosted",
-        "authType": "none",
-        "logLevel": "warn",
-        "connectionTimeout": 3000,
-        "requestTimeout": 30000,
-        "maxRetryTime": 30000,
-        "initialRetryTime": 300,
-        "retries": 5,
-        "sslRejectUnauthorized": true
-    },
-    {
-        "id": "inject-create-topic",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "1. Create Test Topic",
-        "props": [
-            { "p": "action", "v": "createTopic", "vt": "str" },
-            { "p": "topic", "v": "kafka-suite-test", "vt": "str" },
-            { "p": "config", "v": "{\"partitions\":3,\"replicationFactor\":1}", "vt": "json" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 80,
-        "wires": [["admin-node"]]
-    },
-    {
-        "id": "inject-list-topics",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "2. List Topics",
-        "props": [
-            { "p": "action", "v": "listTopics", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 140,
-        "wires": [["admin-node"]]
-    },
-    {
-        "id": "inject-describe-cluster",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "3. Describe Cluster",
-        "props": [
-            { "p": "action", "v": "describeCluster", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 200,
-        "wires": [["admin-node"]]
-    },
-    {
-        "id": "inject-fetch-offsets",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "4. Fetch Topic Offsets",
-        "props": [
-            { "p": "action", "v": "fetchTopicOffsets", "vt": "str" },
-            { "p": "topic", "v": "kafka-suite-test", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 260,
-        "wires": [["admin-node"]]
-    },
-    {
-        "id": "admin-node",
-        "type": "kafka-suite-admin",
-        "z": "flow-test-all",
-        "name": "Kafka Admin",
-        "broker": "broker-config",
-        "x": 440,
-        "y": 160,
-        "wires": [["debug-admin-success"], ["debug-admin-error"]]
-    },
-    {
-        "id": "debug-admin-success",
-        "type": "debug",
-        "z": "flow-test-all",
-        "name": "Admin Success",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": true,
-        "complete": "true",
-        "targetType": "full",
-        "statusVal": "action",
-        "statusType": "msg",
-        "x": 670,
-        "y": 140,
-        "wires": []
-    },
-    {
-        "id": "debug-admin-error",
-        "type": "debug",
-        "z": "flow-test-all",
-        "name": "Admin Error",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": true,
-        "complete": "error",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 670,
-        "y": 200,
-        "wires": []
-    },
-    {
-        "id": "inject-produce-single",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "5. Send Single Message",
-        "props": [
-            { "p": "payload", "v": "{\"sensor\":\"temp-1\",\"value\":23.5,\"unit\":\"celsius\"}", "vt": "json" },
-            { "p": "key", "v": "sensor-1", "vt": "str" },
-            { "p": "headers", "v": "{\"source\":\"test\",\"version\":\"1\"}", "vt": "json" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 380,
-        "wires": [["producer-node"]]
-    },
-    {
-        "id": "inject-produce-batch",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "6. Send Batch (3 msgs)",
-        "props": [
-            { "p": "payload", "v": "[{\"sensor\":\"temp-2\",\"value\":21.0},{\"sensor\":\"temp-3\",\"value\":25.1},{\"sensor\":\"temp-4\",\"value\":19.8}]", "vt": "json" },
-            { "p": "key", "v": "batch-test", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 440,
-        "wires": [["producer-node"]]
-    },
-    {
-        "id": "producer-node",
-        "type": "kafka-suite-producer",
-        "z": "flow-test-all",
-        "name": "Test Producer",
-        "broker": "broker-config",
-        "topic": "kafka-suite-test",
-        "key": "",
-        "partition": "",
-        "compression": "none",
-        "acks": "-1",
-        "timeout": 30000,
-        "schemaRegistry": "",
-        "x": 440,
-        "y": 400,
-        "wires": [["debug-producer-success"], ["debug-producer-error"]]
-    },
-    {
-        "id": "debug-producer-success",
-        "type": "debug",
-        "z": "flow-test-all",
-        "name": "Producer Success",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": true,
-        "complete": "kafka",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 680,
-        "y": 380,
-        "wires": []
-    },
-    {
-        "id": "debug-producer-error",
-        "type": "debug",
-        "z": "flow-test-all",
-        "name": "Producer Error",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": true,
-        "complete": "error",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 680,
-        "y": 440,
-        "wires": []
-    },
-    {
-        "id": "consumer-node",
-        "type": "kafka-suite-consumer",
-        "z": "flow-test-all",
-        "name": "Test Consumer",
-        "broker": "broker-config",
-        "topics": "kafka-suite-test",
-        "groupId": "node-red-test-group",
-        "startOffset": "earliest",
-        "autoCommit": true,
-        "autoCommitInterval": 5000,
-        "messageFormat": "json",
-        "concurrency": 1,
-        "schemaRegistry": "",
-        "x": 180,
-        "y": 560,
-        "wires": [["debug-consumer"]]
-    },
-    {
-        "id": "debug-consumer",
-        "type": "debug",
-        "z": "flow-test-all",
-        "name": "Consumer Output",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": true,
-        "complete": "true",
-        "targetType": "full",
-        "statusVal": "payload",
-        "statusType": "msg",
-        "x": 430,
-        "y": 560,
-        "wires": []
-    },
-    {
-        "id": "inject-pause",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "Pause Consumer",
-        "props": [
-            { "p": "action", "v": "pause", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 620,
-        "wires": [["consumer-node"]]
-    },
-    {
-        "id": "inject-resume",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "Resume Consumer",
-        "props": [
-            { "p": "action", "v": "resume", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 680,
-        "wires": [["consumer-node"]]
-    },
-    {
-        "id": "inject-list-groups",
-        "type": "inject",
-        "z": "flow-test-all",
-        "name": "7. List Consumer Groups",
-        "props": [
-            { "p": "action", "v": "listGroups", "vt": "str" }
-        ],
-        "repeat": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "x": 180,
-        "y": 320,
-        "wires": [["admin-node"]]
-    },
-    {
-        "id": "comment-admin",
-        "type": "comment",
-        "z": "flow-test-all",
-        "name": "=== ADMIN OPERATIONS ===",
-        "info": "Click the inject buttons in order:\n1. Create Test Topic\n2. List Topics\n3. Describe Cluster\n4. Fetch Topic Offsets\n7. List Consumer Groups",
-        "x": 180,
-        "y": 40,
-        "wires": []
-    },
-    {
-        "id": "comment-producer",
-        "type": "comment",
-        "z": "flow-test-all",
-        "name": "=== PRODUCER ===",
-        "info": "5. Send a single JSON message with key and headers\n6. Send a batch of 3 messages",
-        "x": 160,
-        "y": 340,
-        "wires": []
-    },
-    {
-        "id": "comment-consumer",
-        "type": "comment",
-        "z": "flow-test-all",
-        "name": "=== CONSUMER ===",
-        "info": "The consumer auto-starts and reads from 'earliest'.\nUse Pause/Resume to control it.\nMessages appear in the debug sidebar.",
-        "x": 160,
-        "y": 520,
-        "wires": []
-    }
+  {
+    "id": "tab-admin",
+    "type": "tab",
+    "label": "1 - Admin",
+    "disabled": false,
+    "info": "Tests for kafka-suite-admin: list/create/delete topics, describe cluster, list/describe groups, fetch offsets, reset offsets."
+  },
+  {
+    "id": "tab-producer",
+    "type": "tab",
+    "label": "2 - Producer",
+    "disabled": false,
+    "info": "Tests for kafka-suite-producer: single message, batch (simple values), batch (per-item key/partition override), headers, runtime topic."
+  },
+  {
+    "id": "tab-consumer",
+    "type": "tab",
+    "label": "3 - Consumer",
+    "disabled": false,
+    "info": "Tests for kafka-suite-consumer: auto-commit, manual commit (BigInt-safe), pause/resume, json/string formats."
+  },
+  {
+    "id": "tab-schema",
+    "type": "tab",
+    "label": "4 - Schema Registry",
+    "disabled": false,
+    "info": "End-to-end Avro round-trip: register schema → produce Avro → consume Avro → decode payload. Uses the optional kafka-suite-schema-registry config node."
+  },
+  {
+    "id": "tab-errors",
+    "type": "tab",
+    "label": "5 - Errors",
+    "disabled": false,
+    "info": "Catch-node demo: invalid topic, send-without-topic, unknown admin action."
+  },
+  {
+    "id": "broker-config",
+    "type": "kafka-suite-broker",
+    "name": "Local Kafka",
+    "brokers": "localhost:9092",
+    "clientId": "node-red-test",
+    "backend": "kafkajs",
+    "servicePreset": "self-hosted",
+    "authType": "none",
+    "logLevel": "warn",
+    "connectionTimeout": 3000,
+    "requestTimeout": 30000,
+    "maxRetryTime": 30000,
+    "initialRetryTime": 300,
+    "retries": 5,
+    "sslRejectUnauthorized": true
+  },
+  {
+    "id": "registry-config",
+    "type": "kafka-suite-schema-registry",
+    "name": "Local Schema Registry",
+    "registryUrl": "http://localhost:8081",
+    "schemaType": "AVRO",
+    "cacheTTL": 300000,
+    "autoRegister": false
+  },
+  {
+    "id": "comment-admin-1",
+    "type": "comment",
+    "z": "tab-admin",
+    "name": "ADMIN — click each inject in order",
+    "info": "",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "inject-create-topic",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "1. Create kafka-suite-test (3 partitions)",
+    "props": [
+      {
+        "p": "action",
+        "v": "createTopic",
+        "vt": "str"
+      },
+      {
+        "p": "topic",
+        "v": "kafka-suite-test",
+        "vt": "str"
+      },
+      {
+        "p": "config",
+        "v": "{\"partitions\":3,\"replicationFactor\":1}",
+        "vt": "json"
+      }
+    ],
+    "x": 240,
+    "y": 100,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-create-avro-topic",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "2. Create avro-events (3 partitions)",
+    "props": [
+      {
+        "p": "action",
+        "v": "createTopic",
+        "vt": "str"
+      },
+      {
+        "p": "topic",
+        "v": "avro-events",
+        "vt": "str"
+      },
+      {
+        "p": "config",
+        "v": "{\"partitions\":3,\"replicationFactor\":1}",
+        "vt": "json"
+      }
+    ],
+    "x": 240,
+    "y": 150,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-list-topics",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "3. List Topics",
+    "props": [
+      {
+        "p": "action",
+        "v": "listTopics",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 210,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-describe-cluster",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "4. Describe Cluster",
+    "props": [
+      {
+        "p": "action",
+        "v": "describeCluster",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 260,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-fetch-offsets",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "5. Fetch Topic Offsets (kafka-suite-test)",
+    "props": [
+      {
+        "p": "action",
+        "v": "fetchTopicOffsets",
+        "vt": "str"
+      },
+      {
+        "p": "topic",
+        "v": "kafka-suite-test",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 310,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-list-groups",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "6. List Consumer Groups",
+    "props": [
+      {
+        "p": "action",
+        "v": "listGroups",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 360,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-describe-group",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "7. Describe Group (node-red-test-group)",
+    "props": [
+      {
+        "p": "action",
+        "v": "describeGroup",
+        "vt": "str"
+      },
+      {
+        "p": "groupId",
+        "v": "node-red-test-group",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 410,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-reset-offsets",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "8. Reset Offsets to earliest",
+    "props": [
+      {
+        "p": "action",
+        "v": "resetOffsets",
+        "vt": "str"
+      },
+      {
+        "p": "groupId",
+        "v": "node-red-test-group",
+        "vt": "str"
+      },
+      {
+        "p": "topic",
+        "v": "kafka-suite-test",
+        "vt": "str"
+      },
+      {
+        "p": "earliest",
+        "v": "true",
+        "vt": "bool"
+      }
+    ],
+    "x": 240,
+    "y": 460,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-delete-topic",
+    "type": "inject",
+    "z": "tab-admin",
+    "name": "9. Delete kafka-suite-test (cleanup)",
+    "props": [
+      {
+        "p": "action",
+        "v": "deleteTopic",
+        "vt": "str"
+      },
+      {
+        "p": "topic",
+        "v": "kafka-suite-test",
+        "vt": "str"
+      }
+    ],
+    "x": 240,
+    "y": 510,
+    "wires": [
+      [
+        "admin-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "admin-node",
+    "type": "kafka-suite-admin",
+    "z": "tab-admin",
+    "name": "Kafka Admin",
+    "broker": "broker-config",
+    "x": 620,
+    "y": 280,
+    "wires": [
+      [
+        "debug-admin"
+      ]
+    ]
+  },
+  {
+    "id": "debug-admin",
+    "type": "debug",
+    "z": "tab-admin",
+    "name": "Admin Result",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "action",
+    "statusType": "msg",
+    "x": 820,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "comment-prod-1",
+    "type": "comment",
+    "z": "tab-producer",
+    "name": "PRODUCER — string topic kafka-suite-test",
+    "info": "",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "inject-prod-single",
+    "type": "inject",
+    "z": "tab-producer",
+    "name": "1. Single JSON message",
+    "props": [
+      {
+        "p": "payload",
+        "v": "{\"sensor\":\"temp-1\",\"value\":23.5,\"unit\":\"celsius\"}",
+        "vt": "json"
+      },
+      {
+        "p": "key",
+        "v": "sensor-1",
+        "vt": "str"
+      },
+      {
+        "p": "headers",
+        "v": "{\"source\":\"test\",\"version\":\"1\"}",
+        "vt": "json"
+      }
+    ],
+    "x": 200,
+    "y": 100,
+    "wires": [
+      [
+        "producer-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-prod-batch",
+    "type": "inject",
+    "z": "tab-producer",
+    "name": "2. Batch (simple values, same key)",
+    "props": [
+      {
+        "p": "payload",
+        "v": "[\"value-A\",\"value-B\",\"value-C\"]",
+        "vt": "json"
+      },
+      {
+        "p": "key",
+        "v": "batch-test",
+        "vt": "str"
+      }
+    ],
+    "x": 200,
+    "y": 160,
+    "wires": [
+      [
+        "producer-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-prod-batch-wrapped",
+    "type": "inject",
+    "z": "tab-producer",
+    "name": "3. Batch (per-item key + partition)",
+    "props": [
+      {
+        "p": "payload",
+        "v": "[{\"key\":\"k1\",\"value\":\"v1\",\"partition\":0},{\"key\":\"k2\",\"value\":\"v2\",\"partition\":1},{\"key\":\"k3\",\"value\":\"v3\",\"partition\":2}]",
+        "vt": "json"
+      }
+    ],
+    "x": 200,
+    "y": 220,
+    "wires": [
+      [
+        "producer-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-prod-runtime-topic",
+    "type": "inject",
+    "z": "tab-producer",
+    "name": "4. Runtime topic via msg.topic",
+    "props": [
+      {
+        "p": "payload",
+        "v": "{\"hello\":\"runtime topic\"}",
+        "vt": "json"
+      },
+      {
+        "p": "topic",
+        "v": "runtime-topic-test",
+        "vt": "str"
+      }
+    ],
+    "x": 200,
+    "y": 280,
+    "wires": [
+      [
+        "producer-node-runtime"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "producer-node",
+    "type": "kafka-suite-producer",
+    "z": "tab-producer",
+    "name": "Producer (kafka-suite-test)",
+    "broker": "broker-config",
+    "topic": "kafka-suite-test",
+    "key": "",
+    "partition": "",
+    "compression": "none",
+    "acks": "-1",
+    "timeout": 30000,
+    "schemaRegistry": "",
+    "x": 530,
+    "y": 160,
+    "wires": [
+      [
+        "debug-producer"
+      ]
+    ]
+  },
+  {
+    "id": "producer-node-runtime",
+    "type": "kafka-suite-producer",
+    "z": "tab-producer",
+    "name": "Producer (no topic, msg.topic)",
+    "broker": "broker-config",
+    "topic": "",
+    "key": "",
+    "partition": "",
+    "compression": "none",
+    "acks": "-1",
+    "timeout": 30000,
+    "schemaRegistry": "",
+    "x": 540,
+    "y": 280,
+    "wires": [
+      [
+        "debug-producer"
+      ]
+    ]
+  },
+  {
+    "id": "debug-producer",
+    "type": "debug",
+    "z": "tab-producer",
+    "name": "Producer Delivery (msg.kafka)",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "kafka",
+    "targetType": "msg",
+    "statusVal": "kafka.offset",
+    "statusType": "msg",
+    "x": 850,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "comment-cons-1",
+    "type": "comment",
+    "z": "tab-consumer",
+    "name": "CONSUMER — auto-commit (json)",
+    "info": "",
+    "x": 180,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "consumer-node-auto",
+    "type": "kafka-suite-consumer",
+    "z": "tab-consumer",
+    "name": "Consumer auto-commit",
+    "broker": "broker-config",
+    "topics": "kafka-suite-test",
+    "groupId": "node-red-test-group",
+    "startOffset": "earliest",
+    "autoCommit": true,
+    "autoCommitInterval": 5000,
+    "messageFormat": "json",
+    "concurrency": 1,
+    "schemaRegistry": "",
+    "x": 200,
+    "y": 100,
+    "wires": [
+      [
+        "debug-consumer-auto"
+      ]
+    ]
+  },
+  {
+    "id": "debug-consumer-auto",
+    "type": "debug",
+    "z": "tab-consumer",
+    "name": "Auto-commit Output",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "payload",
+    "statusType": "msg",
+    "x": 480,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "comment-cons-2",
+    "type": "comment",
+    "z": "tab-consumer",
+    "name": "CONSUMER — manual commit (msg.commit)",
+    "info": "",
+    "x": 200,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "consumer-node-manual",
+    "type": "kafka-suite-consumer",
+    "z": "tab-consumer",
+    "name": "Consumer manual-commit",
+    "broker": "broker-config",
+    "topics": "kafka-suite-test",
+    "groupId": "node-red-manual-group",
+    "startOffset": "earliest",
+    "autoCommit": false,
+    "autoCommitInterval": 5000,
+    "messageFormat": "json",
+    "concurrency": 1,
+    "schemaRegistry": "",
+    "x": 200,
+    "y": 240,
+    "wires": [
+      [
+        "fn-manual-commit"
+      ]
+    ]
+  },
+  {
+    "id": "fn-manual-commit",
+    "type": "function",
+    "z": "tab-consumer",
+    "name": "process + commit",
+    "func": "// Demonstrate the BigInt-safe manual-commit callback.\nconst before = Date.now();\nawait msg.commit();\nmsg.processedInMs = Date.now() - before;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 240,
+    "wires": [
+      [
+        "debug-consumer-manual"
+      ]
+    ]
+  },
+  {
+    "id": "debug-consumer-manual",
+    "type": "debug",
+    "z": "tab-consumer",
+    "name": "Manual-commit Output",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "offset",
+    "statusType": "msg",
+    "x": 700,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "comment-cons-3",
+    "type": "comment",
+    "z": "tab-consumer",
+    "name": "CONSUMER — pause / resume",
+    "info": "",
+    "x": 170,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "inject-pause",
+    "type": "inject",
+    "z": "tab-consumer",
+    "name": "Pause auto-commit consumer",
+    "props": [
+      {
+        "p": "action",
+        "v": "pause",
+        "vt": "str"
+      }
+    ],
+    "x": 220,
+    "y": 360,
+    "wires": [
+      [
+        "consumer-node-auto"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-resume",
+    "type": "inject",
+    "z": "tab-consumer",
+    "name": "Resume auto-commit consumer",
+    "props": [
+      {
+        "p": "action",
+        "v": "resume",
+        "vt": "str"
+      }
+    ],
+    "x": 220,
+    "y": 410,
+    "wires": [
+      [
+        "consumer-node-auto"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "comment-schema-1",
+    "type": "comment",
+    "z": "tab-schema",
+    "name": "SCHEMA REGISTRY — Avro round-trip",
+    "info": "Click in order:\n1. Register Avro schema (one-time setup)\n2. Produce Avro message (encoded by schema-registry)\n3. Consumer below decodes automatically",
+    "x": 220,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "inject-register-schema",
+    "type": "inject",
+    "z": "tab-schema",
+    "name": "1. Register Avro schema for avro-events-value",
+    "props": [
+      {
+        "p": "payload",
+        "v": "{\"schema\":\"{\\\"type\\\":\\\"record\\\",\\\"name\\\":\\\"SensorEvent\\\",\\\"namespace\\\":\\\"com.example\\\",\\\"fields\\\":[{\\\"name\\\":\\\"sensor\\\",\\\"type\\\":\\\"string\\\"},{\\\"name\\\":\\\"value\\\",\\\"type\\\":\\\"double\\\"},{\\\"name\\\":\\\"unit\\\",\\\"type\\\":\\\"string\\\"}]}\"}",
+        "vt": "json"
+      },
+      {
+        "p": "headers",
+        "v": "{\"content-type\":\"application/vnd.schemaregistry.v1+json\"}",
+        "vt": "json"
+      }
+    ],
+    "x": 250,
+    "y": 100,
+    "wires": [
+      [
+        "http-register-schema"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "http-register-schema",
+    "type": "http request",
+    "z": "tab-schema",
+    "name": "POST /subjects/avro-events-value/versions",
+    "method": "POST",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "http://localhost:8081/subjects/avro-events-value/versions",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 620,
+    "y": 100,
+    "wires": [
+      [
+        "debug-register"
+      ]
+    ]
+  },
+  {
+    "id": "debug-register",
+    "type": "debug",
+    "z": "tab-schema",
+    "name": "Registered schema id",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload.schemaId",
+    "statusType": "msg",
+    "x": 820,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "inject-prod-avro",
+    "type": "inject",
+    "z": "tab-schema",
+    "name": "2. Produce Avro message",
+    "props": [
+      {
+        "p": "payload",
+        "v": "{\"sensor\":\"avro-temp\",\"value\":42.7,\"unit\":\"celsius\"}",
+        "vt": "json"
+      },
+      {
+        "p": "key",
+        "v": "avro-key-1",
+        "vt": "str"
+      }
+    ],
+    "x": 200,
+    "y": 200,
+    "wires": [
+      [
+        "producer-avro"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "inject-prod-avro-batch",
+    "type": "inject",
+    "z": "tab-schema",
+    "name": "3. Produce Avro batch (3 msgs)",
+    "props": [
+      {
+        "p": "payload",
+        "v": "[{\"sensor\":\"a\",\"value\":1.1,\"unit\":\"c\"},{\"sensor\":\"b\",\"value\":2.2,\"unit\":\"c\"},{\"sensor\":\"c\",\"value\":3.3,\"unit\":\"c\"}]",
+        "vt": "json"
+      }
+    ],
+    "x": 220,
+    "y": 250,
+    "wires": [
+      [
+        "producer-avro"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "producer-avro",
+    "type": "kafka-suite-producer",
+    "z": "tab-schema",
+    "name": "Producer (Avro encoded)",
+    "broker": "broker-config",
+    "topic": "avro-events",
+    "key": "",
+    "partition": "",
+    "compression": "none",
+    "acks": "-1",
+    "timeout": 30000,
+    "schemaRegistry": "registry-config",
+    "x": 540,
+    "y": 220,
+    "wires": [
+      [
+        "debug-prod-avro"
+      ]
+    ]
+  },
+  {
+    "id": "debug-prod-avro",
+    "type": "debug",
+    "z": "tab-schema",
+    "name": "Avro produce result",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "kafka",
+    "targetType": "msg",
+    "statusVal": "kafka.offset",
+    "statusType": "msg",
+    "x": 800,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "consumer-avro",
+    "type": "kafka-suite-consumer",
+    "z": "tab-schema",
+    "name": "Consumer (Avro decoded)",
+    "broker": "broker-config",
+    "topics": "avro-events",
+    "groupId": "node-red-avro-group",
+    "startOffset": "earliest",
+    "autoCommit": true,
+    "autoCommitInterval": 5000,
+    "messageFormat": "string",
+    "concurrency": 1,
+    "schemaRegistry": "registry-config",
+    "x": 230,
+    "y": 340,
+    "wires": [
+      [
+        "debug-cons-avro"
+      ]
+    ]
+  },
+  {
+    "id": "debug-cons-avro",
+    "type": "debug",
+    "z": "tab-schema",
+    "name": "Avro decoded payload",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "payload.sensor",
+    "statusType": "msg",
+    "x": 540,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "comment-err-1",
+    "type": "comment",
+    "z": "tab-errors",
+    "name": "ERROR HANDLING — catch node",
+    "info": "",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "inject-err-no-topic",
+    "type": "inject",
+    "z": "tab-errors",
+    "name": "1. Producer without topic",
+    "props": [
+      {
+        "p": "payload",
+        "v": "{\"x\":1}",
+        "vt": "json"
+      }
+    ],
+    "x": 200,
+    "y": 100,
+    "wires": [
+      [
+        "producer-no-topic"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "producer-no-topic",
+    "type": "kafka-suite-producer",
+    "z": "tab-errors",
+    "name": "Producer (no topic)",
+    "broker": "broker-config",
+    "topic": "",
+    "key": "",
+    "partition": "",
+    "compression": "none",
+    "acks": "-1",
+    "timeout": 30000,
+    "schemaRegistry": "",
+    "x": 470,
+    "y": 100,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "inject-err-unknown-action",
+    "type": "inject",
+    "z": "tab-errors",
+    "name": "2. Admin unknown action",
+    "props": [
+      {
+        "p": "action",
+        "v": "doMagic",
+        "vt": "str"
+      }
+    ],
+    "x": 200,
+    "y": 160,
+    "wires": [
+      [
+        "admin-err-node"
+      ]
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": ""
+  },
+  {
+    "id": "admin-err-node",
+    "type": "kafka-suite-admin",
+    "z": "tab-errors",
+    "name": "Admin (for errors)",
+    "broker": "broker-config",
+    "x": 470,
+    "y": 160,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "catch-errors",
+    "type": "catch",
+    "z": "tab-errors",
+    "name": "Catch all kafka-suite errors",
+    "scope": null,
+    "uncaught": false,
+    "x": 220,
+    "y": 240,
+    "wires": [
+      [
+        "debug-errors"
+      ]
+    ]
+  },
+  {
+    "id": "debug-errors",
+    "type": "debug",
+    "z": "tab-errors",
+    "name": "Caught error",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": true,
+    "complete": "error",
+    "targetType": "msg",
+    "statusVal": "error.message",
+    "statusType": "msg",
+    "x": 530,
+    "y": 240,
+    "wires": []
+  }
 ]

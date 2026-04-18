@@ -3,7 +3,16 @@
     category: 'config',
     defaults: {
       name: { value: '' },
-      brokers: { value: 'localhost:9092', required: true },
+      brokers: {
+        value: 'localhost:9092',
+        required: true,
+        validate: function (v) {
+          if (!v) return false;
+          return v.split(',').every(function (b) {
+            return /^[A-Za-z0-9.-]+:\d{1,5}$/.test(b.trim());
+          });
+        }
+      },
       clientId: { value: 'node-red-kafka-suite' },
       backend: { value: 'kafkajs' },
       servicePreset: { value: 'self-hosted' },

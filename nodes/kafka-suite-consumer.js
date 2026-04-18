@@ -37,7 +37,7 @@ module.exports = function (RED) {
     node._setupConsumer = async function () {
       try {
         const client = node.brokerNode.getClient();
-        if (!client) return;
+        if (!client) return false;
 
         node.consumer = client.createConsumer(node.groupId, {
           sessionTimeout: 30000,
@@ -70,11 +70,18 @@ module.exports = function (RED) {
                 value = node._decodeValue(value);
               }
 
-              // Build headers object
+              // Build headers object. KafkaJS may deliver header values as
+              // Buffer, string, null, or Array (for multi-value headers).
+              const decodeHeader = (v) => {
+                if (v == null) return null;
+                if (Array.isArray(v)) return v.map(decodeHeader);
+                if (Buffer.isBuffer(v)) return v.toString();
+                return String(v);
+              };
               let headers = {};
               if (message.headers) {
                 for (const [hKey, hVal] of Object.entries(message.headers)) {
-                  headers[hKey] = hVal ? hVal.toString() : null;
+                  headers[hKey] = decodeHeader(hVal);
                 }
               }
 
@@ -92,13 +99,15 @@ module.exports = function (RED) {
                 }
               };
 
-              // Manual commit callback
+              // Manual commit callback. Use BigInt because Kafka offsets are
+              // 64-bit unsigned integers and can exceed Number.MAX_SAFE_INTEGER
+              // (2^53-1) on busy long-running topics.
               if (!node.autoCommit) {
                 msg.commit = async function () {
                   await node.consumer.commitOffsets([{
                     topic: topic,
                     partition: partition,
-                    offset: (parseInt(message.offset) + 1).toString()
+                    offset: (BigInt(message.offset) + 1n).toString()
                   }]);
                 };
               }
@@ -117,20 +126,27 @@ module.exports = function (RED) {
 
         node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
         node.log('Kafka consumer started for topics: ' + node.topics.join(', '));
+        return true;
       } catch (err) {
+        // Reset so the next interval tick can retry instead of leaving
+        // the node stuck with a half-initialized consumer.
+        if (node.consumer) {
+          try { await node.consumer.disconnect(); } catch (e) { /* ignore */ }
+          node.consumer = null;
+        }
         node.status({ fill: 'red', shape: 'ring', text: 'consumer error' });
         node.error('Failed to start consumer: ' + err.message);
+        return false;
       }
     };
 
     // Register with broker
     node.brokerNode.register(node);
 
-    // Setup consumer once broker is connected
-    const checkInterval = setInterval(() => {
+    // Poll until broker is connected and consumer setup succeeds.
+    const checkInterval = setInterval(async () => {
       if (node.brokerNode.connected && !node.consumer) {
-        clearInterval(checkInterval);
-        node._setupConsumer();
+        await node._setupConsumer();
       }
     }, 500);
 
@@ -145,18 +161,19 @@ module.exports = function (RED) {
       }
 
       const action = msg.action || msg.payload;
-      if (action === 'pause' && !node.paused) {
-        node.consumer.pause(node.topics);
-        node.paused = true;
-        node.status({ fill: 'blue', shape: 'dot', text: 'paused' });
+      try {
+        if (action === 'pause' && !node.paused) {
+          node.consumer.pause(node.topics);
+          node.paused = true;
+          node.status({ fill: 'blue', shape: 'dot', text: 'paused' });
+        } else if (action === 'resume' && node.paused) {
+          node.consumer.resume(node.topics);
+          node.paused = false;
+          node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
+        }
         done();
-      } else if (action === 'resume' && node.paused) {
-        node.consumer.resume(node.topics);
-        node.paused = false;
-        node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
-        done();
-      } else {
-        done();
+      } catch (err) {
+        done(err);
       }
     });
 

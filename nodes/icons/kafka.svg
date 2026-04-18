@@ -1,15 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 60" width="40" height="60">
-  <g fill="white" transform="translate(20,30)">
-    <circle cx="0" cy="-8" r="4" fill="none" stroke="white" stroke-width="1.5"/>
-    <circle cx="0" cy="8" r="4" fill="none" stroke="white" stroke-width="1.5"/>
-    <line x1="0" y1="-4" x2="0" y2="4" stroke="white" stroke-width="1.5"/>
-    <circle cx="-8" cy="-16" r="3" fill="none" stroke="white" stroke-width="1.2"/>
-    <circle cx="8" cy="-16" r="3" fill="none" stroke="white" stroke-width="1.2"/>
-    <circle cx="-8" cy="16" r="3" fill="none" stroke="white" stroke-width="1.2"/>
-    <circle cx="8" cy="16" r="3" fill="none" stroke="white" stroke-width="1.2"/>
-    <line x1="-2" y1="-11" x2="-6" y2="-14" stroke="white" stroke-width="1.2"/>
-    <line x1="2" y1="-11" x2="6" y2="-14" stroke="white" stroke-width="1.2"/>
-    <line x1="-2" y1="11" x2="-6" y2="14" stroke="white" stroke-width="1.2"/>
-    <line x1="2" y1="11" x2="6" y2="14" stroke="white" stroke-width="1.2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+  <g fill="#ffffff" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" transform="translate(20,20)">
+    <!-- Vertikale Verbindungslinie zwischen den zwei mittleren Knoten -->
+    <line x1="0" y1="-4" x2="0" y2="4" stroke-width="2.5"/>
+
+    <!-- Mittlere Knoten (oben + unten) -->
+    <circle cx="0" cy="-7" r="3" fill="#ffffff"/>
+    <circle cx="0" cy="7" r="3" fill="#ffffff"/>
+
+    <!-- Verbindungslinien zu den äußeren Knoten -->
+    <line x1="-2" y1="-9" x2="-7" y2="-12" stroke-width="2"/>
+    <line x1="2" y1="-9" x2="7" y2="-12" stroke-width="2"/>
+    <line x1="-2" y1="9" x2="-7" y2="12" stroke-width="2"/>
+    <line x1="2" y1="9" x2="7" y2="12" stroke-width="2"/>
+
+    <!-- Äußere Knoten (4 Ecken) -->
+    <circle cx="-9" cy="-13" r="2.5" fill="#ffffff"/>
+    <circle cx="9" cy="-13" r="2.5" fill="#ffffff"/>
+    <circle cx="-9" cy="13" r="2.5" fill="#ffffff"/>
+    <circle cx="9" cy="13" r="2.5" fill="#ffffff"/>
   </g>
 </svg>

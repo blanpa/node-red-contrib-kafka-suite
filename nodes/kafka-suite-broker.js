@@ -1,6 +1,6 @@
 'use strict';
 
-const { createClient } = require('../shared/client-factory');
+const { createClient } = require('../lib/client-factory');
 
 module.exports = function (RED) {
   function KafkaBrokerNode(config) {
@@ -11,6 +11,13 @@ module.exports = function (RED) {
     node.name = config.name;
     node.brokers = (config.brokers || 'localhost:9092').split(',').map(b => b.trim()).filter(Boolean);
     node.clientId = config.clientId || 'node-red-kafka-suite';
+
+    // Validate broker URLs early. Accepted forms:
+    //   host:port              (most common)
+    //   PROTOCOL://host:port   (e.g. SASL_SSL://kafka.example.com:9094)
+    // Anything else (missing port, whitespace, invalid host) is rejected.
+    const brokerRegex = /^(?:[A-Z_]+:\/\/)?[a-zA-Z0-9.-]+:\d{1,5}$/;
+    node.invalidBrokers = node.brokers.filter(b => !brokerRegex.test(b));
     node.backend = config.backend || 'kafkajs';
     node.servicePreset = config.servicePreset || 'self-hosted';
     node.authType = config.authType || 'none';
@@ -83,12 +90,23 @@ module.exports = function (RED) {
      */
     node.doConnect = async function () {
       if (node.connected || node.connecting) return;
+      if (node.invalidBrokers.length > 0) {
+        node.setAllStatus({ fill: 'red', shape: 'ring', text: 'invalid broker URL' });
+        node.error('Invalid broker URL(s): ' + node.invalidBrokers.join(', ') +
+          '. Expected host:port (or PROTOCOL://host:port).');
+        return;
+      }
       node.connecting = true;
       node.setAllStatus({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
 
       try {
         const adapterConfig = node.getAdapterConfig();
         node.client = createClient(node.backend, adapterConfig);
+        // Forward disconnect/error events from the underlying client so we
+        // notice when a previously healthy connection drops.
+        if (typeof node.client.on === 'function') {
+          node.client.on('disconnected', () => node._handleClientLost('disconnected'));
+        }
         await node.client.connect();
         node.connected = true;
         node.connecting = false;
@@ -100,12 +118,35 @@ module.exports = function (RED) {
         node.setAllStatus({ fill: 'red', shape: 'ring', text: 'error: ' + err.message });
         node.error('Failed to connect to Kafka: ' + err.message);
         // Schedule reconnect
-        node._reconnectTimer = setTimeout(() => {
-          if (!node.closing && Object.keys(node.users).length > 0) {
-            node.doConnect();
-          }
-        }, node.initialRetryTime);
+        node._scheduleReconnect();
       }
+    };
+
+    /**
+     * Schedule a reconnect attempt with capped exponential-style backoff
+     * (delegates the actual interval growth to the underlying adapter via
+     * initialRetryTime; we just keep retrying on failure).
+     */
+    node._scheduleReconnect = function () {
+      if (node._reconnectTimer) clearTimeout(node._reconnectTimer);
+      node._reconnectTimer = setTimeout(() => {
+        node._reconnectTimer = null;
+        if (!node.closing && Object.keys(node.users).length > 0) {
+          node.doConnect();
+        }
+      }, node.initialRetryTime);
+    };
+
+    /**
+     * Called when an established Kafka connection drops unexpectedly.
+     */
+    node._handleClientLost = function (reason) {
+      if (node.closing || !node.connected) return;
+      node.connected = false;
+      node.client = null;
+      node.setAllStatus({ fill: 'yellow', shape: 'ring', text: 'reconnecting (' + reason + ')' });
+      node.warn('Kafka connection lost (' + reason + '), scheduling reconnect');
+      node._scheduleReconnect();
     };
 
     /**
@@ -141,6 +182,8 @@ module.exports = function (RED) {
         node.doConnect();
       } else if (node.connected) {
         childNode.status({ fill: 'green', shape: 'dot', text: 'connected' });
+      } else if (node.connecting) {
+        childNode.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
       }
     };
 

@@ -1,32 +1,42 @@
 <script type="text/javascript">
   RED.nodes.registerType('kafka-suite-producer', {
-    category: 'kafka',
-    color: '#2196F3',
+    category: 'kafka-suite',
+    color: '#E65100',
     defaults: {
       name: { value: '' },
       broker: { value: '', type: 'kafka-suite-broker', required: true },
-      topic: { value: '' },
+      topic: {
+        value: '',
+        validate: function (v) {
+          return !v || /^[A-Za-z0-9._-]+$/.test(v);
+        }
+      },
       key: { value: '' },
-      partition: { value: '' },
+      partition: {
+        value: '',
+        validate: function (v) {
+          return v === '' || v == null || /^\d+$/.test(String(v));
+        }
+      },
       compression: { value: 'none' },
       acks: { value: '-1' },
       timeout: { value: 30000, validate: RED.validators.number() },
-      schemaRegistry: { value: '', type: 'kafka-suite-schema-registry' }
+      schemaRegistry: {
+        value: '',
+        type: 'kafka-suite-schema-registry',
+        required: false,
+        validate: function (v) { return !v || v === '_ADD_' || RED.nodes.node(v) != null; }
+      }
     },
     inputs: 1,
-    outputs: 2,
-    outputLabels: ['success', 'error'],
+    outputs: 1,
+    inputLabels: ['payload'],
+    outputLabels: ['delivery'],
     icon: 'kafka.svg',
     label: function () {
       return this.name || this.topic || 'kafka producer';
     },
-    paletteLabel: 'kafka producer',
-    oneditprepare: function () {
-      // Show schema registry field only if available
-      if (!this.schemaRegistry) {
-        // Keep it visible for future use
-      }
-    }
+    paletteLabel: 'kafka producer'
   });
 </script>
 
@@ -101,24 +111,14 @@
   </dl>
 
   <h3>Outputs</h3>
-  <ol class="node-ports">
-    <li>Success
-      <dl class="message-properties">
-        <dt>payload <span class="property-type">any</span></dt>
-        <dd>Original payload.</dd>
-        <dt>kafka <span class="property-type">object</span></dt>
-        <dd>Delivery metadata: <code>{ topic, partition, offset, timestamp, key }</code></dd>
-      </dl>
-    </li>
-    <li>Error
-      <dl class="message-properties">
-        <dt>payload <span class="property-type">any</span></dt>
-        <dd>Original payload.</dd>
-        <dt>error <span class="property-type">object</span></dt>
-        <dd>Error details: <code>{ message, stack }</code></dd>
-      </dl>
-    </li>
-  </ol>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">any</span></dt>
+    <dd>Original payload.</dd>
+    <dt>kafka <span class="property-type">object</span></dt>
+    <dd>Delivery metadata: <code>{ topic, partition, offset, timestamp, key }</code></dd>
+  </dl>
+  <p>Errors are emitted via <code>node.error()</code> and can be handled with a
+  <a href="https://nodered.org/docs/user-guide/catch"><code>catch</code></a> node.</p>
 
   <h3>Details</h3>
   <p>The producer sends messages to the configured Kafka topic. If <code>msg.payload</code> is an array,

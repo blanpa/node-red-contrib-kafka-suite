@@ -1,0 +1,47 @@
+services:
+  # Mimics an Aiven Kafka service: mTLS-only, self-signed CA, client must present
+  # cert + key. Aiven uses Redpanda internally on some plans, but the wire
+  # protocol & TLS behaviour matches what the kafkajs/Confluent clients see.
+  aiven-sim:
+    image: redpandadata/redpanda:v24.2.7
+    hostname: aiven-sim
+    container_name: kafka-suite-aiven-sim
+    user: "0:0"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        cp /etc/redpanda-source/redpanda.yaml /etc/redpanda/redpanda.yaml
+        exec /usr/bin/rpk redpanda start --overprovisioned --smp=1 --memory=512M --reserve-memory=0M --check=false
+    ports:
+      - "9094:9094"
+    volumes:
+      - ./test/certs:/etc/redpanda/certs:ro
+      - ./test/redpanda-aiven-sim.yaml:/etc/redpanda-source/redpanda.yaml:ro
+    healthcheck:
+      # admin API on 9644 has no auth — cheapest reachability probe
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9644/v1/status/ready || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Redpanda WITH SASL_SSL (SCRAM-SHA-256). Single broker.
+  redpanda-sasl:
+    image: redpandadata/redpanda:v24.2.7
+    hostname: redpanda-sasl
+    container_name: kafka-suite-redpanda-sasl
+    user: "0:0"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        cp /etc/redpanda-source/redpanda.yaml /etc/redpanda/redpanda.yaml
+        exec /usr/bin/rpk redpanda start --overprovisioned --smp=1 --memory=512M --reserve-memory=0M --check=false
+    ports:
+      - "9095:9095"
+    volumes:
+      - ./test/certs:/etc/redpanda/certs:ro
+      - ./test/redpanda-sasl.yaml:/etc/redpanda-source/redpanda.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9644/v1/status/ready || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

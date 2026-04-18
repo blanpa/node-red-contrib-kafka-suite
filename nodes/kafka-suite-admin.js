@@ -16,22 +16,27 @@ module.exports = function (RED) {
     node._setupAdmin = async function () {
       try {
         const client = node.brokerNode.getClient();
-        if (!client) return;
+        if (!client) return false;
         node.admin = client.createAdmin();
         await node.admin.connect();
         node.status({ fill: 'green', shape: 'dot', text: 'ready' });
+        return true;
       } catch (err) {
+        if (node.admin) {
+          try { await node.admin.disconnect(); } catch (e) { /* ignore */ }
+          node.admin = null;
+        }
         node.status({ fill: 'red', shape: 'ring', text: 'admin error' });
         node.error('Failed to connect admin: ' + err.message);
+        return false;
       }
     };
 
     node.brokerNode.register(node);
 
-    const checkInterval = setInterval(() => {
+    const checkInterval = setInterval(async () => {
       if (node.brokerNode.connected && !node.admin) {
-        clearInterval(checkInterval);
-        node._setupAdmin();
+        await node._setupAdmin();
       }
     }, 500);
 
@@ -41,14 +46,12 @@ module.exports = function (RED) {
       done = done || function (err) { if (err) node.error(err, msg); };
 
       if (!node.admin) {
-        send([null, Object.assign({}, msg, { error: { message: 'Admin not connected' } })]);
         done(new Error('Admin not connected'));
         return;
       }
 
       const action = msg.action;
       if (!action) {
-        send([null, Object.assign({}, msg, { error: { message: 'No action specified in msg.action' } })]);
         done(new Error('No action specified. Set msg.action (e.g., "listTopics", "createTopic")'));
         return;
       }
@@ -117,14 +120,9 @@ module.exports = function (RED) {
 
         msg.payload = result;
         msg.action = action;
-        send([msg, null]);
+        send(msg);
         done();
       } catch (err) {
-        const errMsg = Object.assign({}, msg, {
-          error: { message: err.message, stack: err.stack },
-          action: action
-        });
-        send([null, errMsg]);
         done(err);
       }
     });

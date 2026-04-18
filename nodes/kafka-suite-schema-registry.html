@@ -3,7 +3,11 @@
     category: 'config',
     defaults: {
       name: { value: '' },
-      registryUrl: { value: 'http://localhost:8081', required: true },
+      registryUrl: {
+        value: 'http://localhost:8081',
+        required: true,
+        validate: function (v) { return /^https?:\/\/[^\s]+$/i.test(v); }
+      },
       schemaType: { value: 'AVRO' },
       cacheTTL: { value: 300000, validate: RED.validators.number() },
       autoRegister: { value: false }

@@ -1,0 +1,28 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    hostname: redpanda
+    container_name: kafka-suite-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9192
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,EXTERNAL://localhost:9192
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=localhost:8082
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "9192:9192"   # Kafka API on host (different port to coexist with cp-kafka)
+      - "8082:8082"   # Pandaproxy
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

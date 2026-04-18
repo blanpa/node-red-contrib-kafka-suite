@@ -1,7 +1,7 @@
 {
   "name": "@blanpa/node-red-contrib-kafka-suite",
-  "version": "0.1.0",
-  "description": "A comprehensive Kafka integration for Node-RED with producer, consumer, admin, and schema registry nodes. Supports all major managed Kafka services (Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, Redpanda).",
+  "version": "0.0.1",
+  "description": "BETA — A comprehensive Kafka integration for Node-RED with producer, consumer, admin, and Schema Registry nodes. Dual backends (kafkajs / @confluentinc/kafka-javascript) and presets for Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, and Redpanda. Please file issues at https://github.com/blanpa/node-red-contrib-kafka-suite/issues.",
   "keywords": [
     "node-red",
     "kafka",
@@ -20,17 +20,29 @@
     "type": "git",
     "url": "https://github.com/blanpa/node-red-contrib-kafka-suite.git"
   },
+  "homepage": "https://github.com/blanpa/node-red-contrib-kafka-suite#readme",
+  "bugs": {
+    "url": "https://github.com/blanpa/node-red-contrib-kafka-suite/issues"
+  },
+  "files": [
+    "lib/",
+    "nodes/",
+    "examples/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=16.0.0"
   },
   "node-red": {
     "version": ">=3.0.0",
     "nodes": {
-      "kafka-broker": "nodes/config/kafka-broker.js",
-      "kafka-producer": "nodes/producer/kafka-producer.js",
-      "kafka-consumer": "nodes/consumer/kafka-consumer.js",
-      "kafka-admin": "nodes/admin/kafka-admin.js",
-      "kafka-schema-registry": "nodes/schema-registry/kafka-schema-registry.js"
+      "kafka-suite-broker": "nodes/kafka-suite-broker.js",
+      "kafka-suite-producer": "nodes/kafka-suite-producer.js",
+      "kafka-suite-consumer": "nodes/kafka-suite-consumer.js",
+      "kafka-suite-admin": "nodes/kafka-suite-admin.js",
+      "kafka-suite-schema-registry": "nodes/kafka-suite-schema-registry.js"
     }
   },
   "dependencies": {
@@ -40,7 +52,7 @@
     "@kafkajs/confluent-schema-registry": "^3.3.0"
   },
   "peerDependencies": {
-    "@confluentinc/kafka-javascript": ">=1.0.0"
+    "@confluentinc/kafka-javascript": "^1.9.0"
   },
   "peerDependenciesMeta": {
     "@confluentinc/kafka-javascript": {
@@ -49,10 +61,10 @@
   },
   "devDependencies": {
     "mocha": "^10.7.0",
-    "should": "^13.2.3",
-    "sinon": "^17.0.0",
     "node-red": "^4.0.0",
-    "node-red-node-test-helper": "^0.3.4"
+    "node-red-node-test-helper": "^0.3.4",
+    "should": "^13.2.3",
+    "sinon": "^17.0.0"
   },
   "scripts": {
     "test": "mocha \"test/**/*_spec.js\" --recursive --exit --timeout 10000",

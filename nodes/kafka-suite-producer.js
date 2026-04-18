@@ -31,8 +31,7 @@ module.exports = function (RED) {
       try {
         const client = node.brokerNode.getClient();
         if (!client) {
-          // Broker not yet connected, will retry via status change
-          return;
+          return false;
         }
         node.producer = client.createProducer({
           allowAutoTopicCreation: true
@@ -40,20 +39,24 @@ module.exports = function (RED) {
         await node.producer.connect();
         node.status({ fill: 'green', shape: 'dot', text: 'ready' });
         node.log('Kafka producer connected');
+        return true;
       } catch (err) {
+        node.producer = null;
         node.status({ fill: 'red', shape: 'ring', text: 'producer error' });
         node.error('Failed to connect producer: ' + err.message);
+        return false;
       }
     };
 
     // Register with broker
     node.brokerNode.register(node);
 
-    // Setup producer once broker is connected
-    const checkInterval = setInterval(() => {
+    // Poll until broker is connected and producer setup succeeds.
+    // Stays alive so transient setup failures (e.g. Kafka still booting)
+    // are retried instead of leaving the node permanently dead.
+    const checkInterval = setInterval(async () => {
       if (node.brokerNode.connected && !node.producer) {
-        clearInterval(checkInterval);
-        node._setupProducer();
+        await node._setupProducer();
       }
     }, 500);
 
@@ -63,8 +66,6 @@ module.exports = function (RED) {
       done = done || function (err) { if (err) node.error(err, msg); };
 
       if (!node.producer) {
-        const errMsg = Object.assign({}, msg, { error: { message: 'Producer not connected' } });
-        send([null, errMsg]);
         done(new Error('Producer not connected'));
         return;
       }
@@ -73,33 +74,63 @@ module.exports = function (RED) {
         // Resolve topic, key, partition from config or msg
         const topic = node.topic || msg.topic;
         if (!topic) {
-          const errMsg = Object.assign({}, msg, { error: { message: 'No topic specified' } });
-          send([null, errMsg]);
           done(new Error('No topic specified. Set topic in node config or msg.topic'));
           return;
         }
 
         const key = node.key || msg.key || null;
-        const partition = node.partition !== '' ? parseInt(node.partition) : (msg.partition != null ? msg.partition : undefined);
+        const hasConfigPartition = node.partition !== '' && node.partition != null;
+        const partition = hasConfigPartition
+          ? parseInt(node.partition)
+          : (msg.partition != null ? msg.partition : undefined);
         const headers = msg.headers || undefined;
 
-        // Prepare value
-        let value = msg.payload;
+        const useRegistry = !!(node.registryNode && node.registryNode.encode);
+        const subject = msg.schema || topic + '-value';
 
-        // Schema Registry encoding (if configured)
-        if (node.registryNode && node.registryNode.encode) {
-          const subject = msg.schema || topic + '-value';
-          value = await node.registryNode.encode(subject, value);
+        // Optional auto-registration: if the broker config has autoRegister=true
+        // and the message provides a schemaDefinition, register it before encoding.
+        // This lets flows ship a schema with the first message rather than having
+        // to pre-register out of band.
+        if (useRegistry && msg.schemaDefinition && node.registryNode.autoRegister && node.registryNode.registerSchema) {
+          try {
+            await node.registryNode.registerSchema(subject, msg.schemaDefinition, msg.schemaType);
+          } catch (regErr) {
+            done(new Error('Schema auto-register failed for ' + subject + ': ' + regErr.message));
+            return;
+          }
         }
 
-        // Batch mode: if payload is an array, send as batch
+        const encodeOne = async (v) => useRegistry ? await node.registryNode.encode(subject, v) : v;
+
+        // Batch mode: if payload is an array, send as batch.
+        // Items can be plain values or objects { key, value, headers, partition }
+        // — per-item fields override the node-level defaults.
+        // When a Schema Registry is configured, encode EACH element separately
+        // — encoding the whole array would validate it against the value
+        // schema as if it were a single record (which fails for record/struct
+        // schemas).
         let result;
-        if (Array.isArray(value)) {
-          const messages = value.map(v => ({
-            key: key,
-            value: v,
-            headers: headers,
-            partition: partition
+        if (Array.isArray(msg.payload)) {
+          const messages = await Promise.all(msg.payload.map(async (item) => {
+            // An item is treated as a Kafka envelope only when it carries
+            // metadata (key/headers/partition) AND a value field. A plain
+            // record like { value: 1.2, sensor: "x" } stays a record so its
+            // own "value" field isn't accidentally extracted.
+            const isWrapped = item && typeof item === 'object' && !Buffer.isBuffer(item)
+              && Object.prototype.hasOwnProperty.call(item, 'value')
+              && (Object.prototype.hasOwnProperty.call(item, 'key')
+                || Object.prototype.hasOwnProperty.call(item, 'headers')
+                || Object.prototype.hasOwnProperty.call(item, 'partition'));
+            if (isWrapped) {
+              return {
+                key: item.key != null ? item.key : key,
+                value: await encodeOne(item.value),
+                headers: item.headers || headers,
+                partition: item.partition != null ? item.partition : partition
+              };
+            }
+            return { key, value: await encodeOne(item), headers, partition };
           }));
           result = await node.producer.send({
             topic,
@@ -109,6 +140,7 @@ module.exports = function (RED) {
             compression: node.compression
           });
         } else {
+          const value = await encodeOne(msg.payload);
           result = await node.producer.send({
             topic,
             messages: [{ key, value, headers, partition }],
@@ -118,22 +150,23 @@ module.exports = function (RED) {
           });
         }
 
-        // Success output - kafkajs returns array of RecordMetadata per partition
-        const firstResult = Array.isArray(result) && result.length > 0 ? result[0] : {};
+        // Success output - kafkajs returns array of RecordMetadata per partition.
+        // We expose the first entry on `msg.kafka` for backwards compat AND the
+        // full array on `msg.kafka.results` so batch sends across multiple
+        // partitions don't lose information.
+        const resultsArr = Array.isArray(result) ? result : [];
+        const firstResult = resultsArr[0] || {};
         msg.kafka = {
           topic: topic,
           partition: firstResult.partition,
           offset: firstResult.baseOffset,
           timestamp: Date.now(),
-          key: key
+          key: key,
+          results: resultsArr
         };
-        send([msg, null]);
+        send(msg);
         done();
       } catch (err) {
-        const errMsg = Object.assign({}, msg, {
-          error: { message: err.message, stack: err.stack }
-        });
-        send([null, errMsg]);
         done(err);
       }
     });

@@ -14,11 +14,11 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     healthcheck:
       test: kafka-topics --bootstrap-server localhost:29092 --list || exit 1
@@ -47,7 +47,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - "1880:1880"
+      - "1881:1880"
     volumes:
       - ./:/opt/kafka-suite
       - node-red-data:/data
