@@ -39,8 +39,9 @@ service presets for all major managed Kafka offerings.
 - **Connection management** — MQTT-style shared connection per broker config
   node, ref-counted producer/consumer/admin lifecycle, auto-reconnect with
   exponential backoff, status badges propagated to the editor.
-- **Dual outputs** on the producer and admin nodes (success + error) so that
-  failure paths are first-class in the flow.
+- **Error handling** via Node-RED's standard error channel — attach a
+  `catch` node scoped to the producer/admin/consumer to handle failures
+  (invalid topic, schema-registry errors, unknown admin action, etc.).
 
 ---
 
@@ -103,11 +104,13 @@ upgrade notice when running on `kafkajs`.
 | `schemaDefinition` | object | If a Schema Registry is attached and `autoRegister` is enabled, the producer will register this schema before encoding. |
 | `schemaType` | string | `AVRO`, `JSON`, or `PROTOBUF`. Defaults to `AVRO`. |
 
-**Outputs**:
+**Output** (on success): original `msg` plus `msg.kafka =
+{ topic, partition, offset, timestamp, key, results }` where `results` is
+the raw `RecordMetadata[]` array returned by the adapter (useful for batch
+sends across multiple partitions).
 
-- **Output 1 — success**: original `msg` plus `msg.kafka =
-  { topic, partition, offset, timestamp, key }`.
-- **Output 2 — error**: original `msg` plus `msg.error = { message, stack }`.
+**Errors** are raised through Node-RED's standard error channel — catch
+them with a `catch` node scoped to the producer.
 
 ### `kafka-suite-consumer`
 
