@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `kafkajs` backend: Snappy, LZ4 and ZSTD compression codecs are now
+  registered automatically when their packages are installed. Previously
+  the producer dropdown advertised LZ4/ZSTD/Snappy but neither the
+  producer nor the consumer could actually handle them — consumers
+  crashed with `KafkaJSNotImplemented: LZ4 compression not implemented`
+  the moment they encountered a batch produced with one of those codecs,
+  even when the consumer itself had compression set to `none`. Codec
+  packages (`kafkajs-snappy`, `kafkajs-lz4`) are now declared as
+  `optionalDependencies` so a fresh `npm install` pulls them in by
+  default. ZSTD support is wired in but `@kafkajs/zstd` must be installed
+  manually (its native build is fragile on newer Node versions; use the
+  `confluent` backend for hassle-free ZSTD). If a codec package is
+  missing, the producer now throws a clear error naming the package to
+  install instead of failing inside kafkajs internals. Fixes #1.
+
 ## [0.0.1] — 2026-04-18 (Beta)
 
 First public beta. Functionally complete and end-to-end tested against

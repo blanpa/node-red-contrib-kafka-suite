@@ -62,12 +62,32 @@ npm install @kafkajs/confluent-schema-registry
 
 # High-performance native backend (alternative to kafkajs)
 npm install @confluentinc/kafka-javascript
+
+# Compression codecs for the kafkajs backend
+# Snappy and LZ4 are auto-installed as optionalDependencies — install
+# manually only if your environment skipped them (e.g. `npm install --no-optional`).
+npm install kafkajs-snappy kafkajs-lz4
+
+# ZSTD support for the kafkajs backend (requires a working C/C++ toolchain;
+# not installed automatically because the upstream package's native build
+# is fragile on newer Node versions). Use the `confluent` backend instead
+# for hassle-free ZSTD.
+npm install @kafkajs/zstd
 ```
 
 `@confluentinc/kafka-javascript` builds a native module — make sure your
 platform has a working C/C++ toolchain (`build-essential` on Debian/Ubuntu,
 Xcode CLI tools on macOS, MSVC build tools on Windows). On ARM/Raspberry Pi
 the pure-JS `kafkajs` backend is recommended.
+
+The `kafkajs` library only ships GZIP natively. The Snappy / LZ4 codec
+packages are pulled in automatically as `optionalDependencies` and must be
+present whenever a topic's batches use one of those codecs — even if your
+producer is configured for `none`, the consumer needs the codec to decode
+batches written by other producers in the cluster. ZSTD requires the
+optional `@kafkajs/zstd` package and a working native build toolchain. The
+`confluent` backend handles all four codecs natively without extra
+packages.
 
 ---
 
