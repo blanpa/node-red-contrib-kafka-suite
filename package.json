@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-kafka-suite",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "BETA — A comprehensive Kafka integration for Node-RED with producer, consumer, admin, and Schema Registry nodes. Dual backends (kafkajs / @confluentinc/kafka-javascript) and presets for Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, and Redpanda. Please file issues at https://github.com/blanpa/node-red-contrib-kafka-suite/issues.",
   "keywords": [
     "node-red",
