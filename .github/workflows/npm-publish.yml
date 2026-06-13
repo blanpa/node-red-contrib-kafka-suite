@@ -1,0 +1,61 @@
+name: Publish to npm
+
+# Publishes the package to npm whenever a version tag (e.g. v0.0.3) is pushed.
+# Authentication uses npm Trusted Publishing (OIDC) — no NPM_TOKEN secret needed.
+#
+# One-time setup on npmjs.com (Package settings -> Trusted Publishers):
+#   Provider:           GitHub Actions
+#   Organization/user:  blanpa
+#   Repository:         node-red-contrib-kafka-suite
+#   Workflow filename:  npm-publish.yml
+#   Environment:        (leave blank, unless you add one below)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read      # checkout
+      id-token: write     # required for Trusted Publishing (OIDC)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted Publishing requires npm >= 11.5.1; the runner ships an older one.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      # Guard: the pushed tag (vX.Y.Z) must match the version in package.json.
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match package.json version '$PKG_VERSION'"
+            exit 1
+          fi
+          echo "Publishing version $PKG_VERSION"
+
+      # No NODE_AUTH_TOKEN: npm resolves credentials via OIDC from the
+      # Trusted Publisher configured on npmjs.com. Provenance is attached
+      # automatically when publishing this way.
+      - name: Publish to npm
+        run: npm publish --access public
