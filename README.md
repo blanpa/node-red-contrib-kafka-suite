@@ -62,27 +62,26 @@ identical regardless of the backend or the Kafka distribution behind it.
 ```mermaid
 flowchart LR
     subgraph NR["Node-RED flow"]
-        direction TB
         P["kafka-suite-producer"]
         C["kafka-suite-consumer"]
         A["kafka-suite-admin"]
     end
 
-    B["kafka-suite-broker<br/>(config node)"]
-    SR["kafka-suite-schema-registry<br/>(config node)"]
+    B["kafka-suite-broker (config)"]
+    SR["kafka-suite-schema-registry (config)"]
 
-    P -- references --> B
-    C -- references --> B
-    A -- references --> B
-    P -. "encode/decode<br/>(optional)" .-> SR
-    C -. "encode/decode<br/>(optional)" .-> SR
+    P -->|references| B
+    C -->|references| B
+    A -->|references| B
+    P -.->|optional| SR
+    C -.->|optional| SR
 
-    B --> ADP{"Backend<br/>adapter"}
-    ADP -- "kafkajs" --> JS["kafkajs<br/>(pure JS)"]
-    ADP -- "confluent" --> RD["librdkafka<br/>(native)"]
-    JS --> K[("Kafka / Redpanda<br/>cluster")]
+    B --> ADP{"Backend adapter"}
+    ADP -->|kafkajs| JS["kafkajs (pure JS)"]
+    ADP -->|confluent| RD["librdkafka (native)"]
+    JS --> K[("Kafka / Redpanda cluster")]
     RD --> K
-    SR <-->|"HTTP"| REG[("Schema Registry")]
+    SR -->|HTTP| REG[("Schema Registry")]
 ```
 
 - **One broker connection, ref-counted.** The broker node opens the connection
@@ -340,22 +339,22 @@ The token is cached and refreshed automatically before it expires.
 sequenceDiagram
     autonumber
     participant N as Broker node
-    participant T as Token provider<br/>(in-process)
-    participant I as OAuth 2.0 / OIDC<br/>token endpoint
+    participant T as Token provider (in-process)
+    participant I as OAuth 2.0 / OIDC token endpoint
     participant K as Kafka broker
 
     N->>T: connect()
-    alt token cached & valid
+    alt token cached and valid
         T-->>N: cached access_token
     else needs refresh
-        T->>I: POST grant_type=password / client_credentials<br/>(client id/secret, username/password, scope, audience)
+        T->>I: POST grant_type = password or client_credentials
         I-->>T: access_token (+ expires_in)
         Note over T: cache until ~30s before expiry
-        T-->>N: { value: access_token }
+        T-->>N: access_token
     end
     N->>K: SASL/OAUTHBEARER handshake (bearer token)
-    K->>K: validate JWT — signature / issuer / audience (JWKS)
-    K-->>N: authenticated ✔
+    K->>K: validate JWT (signature / issuer / audience, via JWKS)
+    K-->>N: authenticated
 ```
 
 - **kafkajs** backend — supports both the `password` and `client_credentials`
