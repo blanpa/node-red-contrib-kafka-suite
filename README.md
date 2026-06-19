@@ -1,18 +1,24 @@
 # node-red-contrib-kafka-suite
 
-> **Status: 0.0.1 — Beta.** This release is functionally complete and end-to-end
-> tested against four Kafka distributions (Confluent CP, Redpanda PLAINTEXT,
-> Redpanda SASL_SSL, mTLS Aiven-style) on two client backends (`kafkajs`,
-> `@confluentinc/kafka-javascript`). It has **not yet** been validated against
-> live managed services with paid accounts (Confluent Cloud, AWS MSK, Azure
-> Event Hubs, Aiven). Please **try it and file issues** at
+[![npm version](https://img.shields.io/npm/v/node-red-contrib-kafka-suite.svg)](https://www.npmjs.com/package/node-red-contrib-kafka-suite)
+[![npm downloads](https://img.shields.io/npm/dm/node-red-contrib-kafka-suite.svg)](https://www.npmjs.com/package/node-red-contrib-kafka-suite)
+[![license](https://img.shields.io/npm/l/node-red-contrib-kafka-suite.svg)](LICENSE)
+[![Node-RED](https://img.shields.io/badge/Node--RED-%E2%89%A53.0-8F0000.svg)](https://nodered.org)
+
+> **Status: 0.0.3 — Beta.** Functionally complete and end-to-end tested against
+> five local Kafka setups (Confluent CP, Redpanda PLAINTEXT, Redpanda SASL_SSL,
+> mTLS Aiven-style, and Keycloak + Redpanda OAUTHBEARER/OIDC) on both client
+> backends (`kafkajs`, `@confluentinc/kafka-javascript`). It has **not yet** been
+> validated against live managed services with paid accounts (Confluent Cloud,
+> AWS MSK, Azure Event Hubs, Aiven). Please **try it and file issues** at
 > <https://github.com/blanpa/node-red-contrib-kafka-suite/issues> — bug reports,
-> reproductions, and feedback on the editor UX are very welcome.
+> reproductions, and editor-UX feedback are very welcome.
 
 A comprehensive Apache Kafka integration for Node-RED with full producer,
 consumer, admin, and Schema Registry support. Built around a dual-backend
-abstraction layer (`kafkajs` + `@confluentinc/kafka-javascript`) and ships with
-service presets for all major managed Kafka offerings.
+abstraction layer (`kafkajs` + `@confluentinc/kafka-javascript`), with
+service presets for the major managed Kafka offerings and OAuth 2.0 / OIDC
+(OAUTHBEARER) authentication.
 
 ---
 
@@ -34,14 +40,58 @@ service presets for all major managed Kafka offerings.
   node.
 - **Service presets** — Confluent Cloud, AWS MSK (IAM + SCRAM), Azure Event
   Hubs, Aiven, Redpanda, and self-hosted.
-- **Authentication** — SASL/PLAIN, SCRAM-SHA-256/512, OAUTHBEARER, mutual
-  TLS (mTLS), or unauthenticated.
+- **Authentication** — SASL/PLAIN, SCRAM-SHA-256/512, **OAUTHBEARER** (OAuth 2.0
+  / OIDC with the `password` and `client_credentials` grants, Strimzi-style),
+  mutual TLS (mTLS), or unauthenticated.
 - **Connection management** — MQTT-style shared connection per broker config
   node, ref-counted producer/consumer/admin lifecycle, auto-reconnect with
   exponential backoff, status badges propagated to the editor.
 - **Error handling** via Node-RED's standard error channel — attach a
   `catch` node scoped to the producer/admin/consumer to handle failures
   (invalid topic, schema-registry errors, unknown admin action, etc.).
+
+---
+
+## Architecture
+
+The producer, consumer, and admin nodes never talk to Kafka directly. They all
+share **one connection** through the `kafka-suite-broker` config node, which
+delegates to one of two interchangeable backend adapters. Your flow logic is
+identical regardless of the backend or the Kafka distribution behind it.
+
+```mermaid
+flowchart LR
+    subgraph NR["Node-RED flow"]
+        direction TB
+        P["kafka-suite-producer"]
+        C["kafka-suite-consumer"]
+        A["kafka-suite-admin"]
+    end
+
+    B["kafka-suite-broker<br/>(config node)"]
+    SR["kafka-suite-schema-registry<br/>(config node)"]
+
+    P -- references --> B
+    C -- references --> B
+    A -- references --> B
+    P -. "encode/decode<br/>(optional)" .-> SR
+    C -. "encode/decode<br/>(optional)" .-> SR
+
+    B --> ADP{"Backend<br/>adapter"}
+    ADP -- "kafkajs" --> JS["kafkajs<br/>(pure JS)"]
+    ADP -- "confluent" --> RD["librdkafka<br/>(native)"]
+    JS --> K[("Kafka / Redpanda<br/>cluster")]
+    RD --> K
+    SR <-->|"HTTP"| REG[("Schema Registry")]
+```
+
+- **One broker connection, ref-counted.** The broker node opens the connection
+  when the first child node needs it and closes it when the last one is removed
+  (MQTT-style), with auto-reconnect and exponential backoff.
+- **Adapter abstraction.** Every backend implements the same interface
+  (`lib/adapter-interface.js`), so producer/consumer/admin code is
+  backend-agnostic — switching `kafkajs` ↔ `confluent` is a one-field change in
+  the config node.
 
 ---
 
@@ -91,6 +141,26 @@ packages.
 
 ---
 
+## Quick start
+
+A minimal produce → consume loop against a local broker:
+
+1. Drag in a **broker** config node. Set **Brokers** to `localhost:9092`,
+   **Backend** `kafkajs`, **Auth** `None`, and deploy.
+2. Wire an **inject** node → **kafka-suite-producer**. On the producer set
+   **Topic** `demo`. Configure the inject to send
+   `msg.payload = { "hello": "world" }`.
+3. Wire a **kafka-suite-consumer** → **debug** node. On the consumer set
+   **Topics** `demo`, **Start from** `earliest`, **Format** `json`.
+4. **Deploy.** Every inject publishes a message to `demo`; the consumer decodes
+   it and the debug pane prints `{ hello: "world" }`.
+
+A ready-made flow exercising all nodes ships at
+[`examples/test-all-nodes.json`](examples/test-all-nodes.json) — import it via
+the Node-RED menu → *Import*.
+
+---
+
 ## Nodes
 
 ### `kafka-suite-broker` (config node)
@@ -104,6 +174,7 @@ with automatic connect/disconnect based on the registered child nodes.
 | Brokers | Comma-separated list of broker addresses (`host:port` or `PROTOCOL://host:port`). Validated in the editor. |
 | Backend | `kafkajs` (default, pure JS) or `confluent` (native librdkafka). |
 | Auth | None, SASL/PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, OAUTHBEARER, SSL/mTLS. |
+| OAUTHBEARER | Token URL, grant (`password` / `client_credentials`), client id/secret, username/password, scope, audience, per-endpoint TLS verify. See [OAUTHBEARER](#oauthbearer-oauth-20--oidc). |
 | SSL | CA cert, client cert, client key, passphrase, `rejectUnauthorized`. |
 
 ### `kafka-suite-producer`
@@ -215,8 +286,12 @@ environment.
 
 ### AWS MSK (IAM)
 
-- Service preset: **AWS MSK (IAM)**
-- Auth: SASL/OAUTHBEARER with an IAM token provider.
+- Service preset: **AWS MSK (IAM)** — selects SASL/OAUTHBEARER.
+- ⚠️ **Not yet natively supported.** AWS MSK IAM authenticates with SigV4-signed
+  tokens (via `aws-msk-iam-sasl-signer-js`), which this package does **not** bundle
+  yet. The built-in OAUTHBEARER support targets OAuth 2.0 / OIDC token endpoints
+  (see [OAUTHBEARER](#oauthbearer-oauth-20--oidc)), not IAM signing. If you need
+  MSK IAM, please open an issue.
 
 ### AWS MSK (SCRAM)
 
@@ -261,10 +336,37 @@ token endpoint. This is the equivalent of the Strimzi
 
 The token is cached and refreshed automatically before it expires.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant N as Broker node
+    participant T as Token provider<br/>(in-process)
+    participant I as OAuth 2.0 / OIDC<br/>token endpoint
+    participant K as Kafka broker
+
+    N->>T: connect()
+    alt token cached & valid
+        T-->>N: cached access_token
+    else needs refresh
+        T->>I: POST grant_type=password / client_credentials<br/>(client id/secret, username/password, scope, audience)
+        I-->>T: access_token (+ expires_in)
+        Note over T: cache until ~30s before expiry
+        T-->>N: { value: access_token }
+    end
+    N->>K: SASL/OAUTHBEARER handshake (bearer token)
+    K->>K: validate JWT — signature / issuer / audience (JWKS)
+    K-->>N: authenticated ✔
+```
+
 - **kafkajs** backend — supports both the `password` and `client_credentials`
-  grants (token fetched in-process).
+  grants; the token is fetched in-process via the built-in token provider
+  (no extra dependency).
 - **confluent** backend — `client_credentials` uses librdkafka's native OIDC
-  (`sasl.oauthbearer.method=oidc`); the `password` grant is **kafkajs-only**.
+  (`sasl.oauthbearer.method=oidc`); the `password` grant is **kafkajs-only**
+  (librdkafka's native OIDC has no password grant).
+
+> Verified end-to-end against a real OIDC provider — see the
+> [OAUTHBEARER E2E test](#oauthbearer-oauth-20--oidc-e2e-test).
 
 ---
 
