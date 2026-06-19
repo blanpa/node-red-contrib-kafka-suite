@@ -21,6 +21,13 @@ module.exports = function (RED) {
     node.backend = config.backend || 'kafkajs';
     node.servicePreset = config.servicePreset || 'self-hosted';
     node.authType = config.authType || 'none';
+    // OAuth 2.0 (SASL/OAUTHBEARER) non-secret settings
+    node.oauthTokenEndpoint = config.oauthTokenEndpoint || '';
+    node.oauthGrantType = config.oauthGrantType || 'client_credentials';
+    node.oauthScope = config.oauthScope || '';
+    node.oauthAudience = config.oauthAudience || '';
+    // Verify TLS on the token endpoint unless explicitly disabled (checkbox).
+    node.oauthTlsReject = config.oauthTlsReject !== false;
     node.logLevel = config.logLevel || 'warn';
     node.connectionTimeout = parseInt(config.connectionTimeout) || 3000;
     node.requestTimeout = parseInt(config.requestTimeout) || 30000;
@@ -79,6 +86,23 @@ module.exports = function (RED) {
         if (['plain', 'scram-sha-256', 'scram-sha-512'].includes(mechanism)) {
           adapterConfig.sasl.username = creds.username || '';
           adapterConfig.sasl.password = creds.password || '';
+        } else if (mechanism === 'oauthbearer') {
+          // OAuth 2.0 (Strimzi-style) bearer token acquisition. The token
+          // endpoint URL, grant type, scope and audience are plain config;
+          // client id/secret and the password-grant username/password are
+          // credentials. The adapters turn this into a token provider.
+          adapterConfig.sasl.oauth = {
+            tokenEndpoint: node.oauthTokenEndpoint,
+            grantType: node.oauthGrantType,
+            clientId: creds.oauthClientId || '',
+            clientSecret: creds.oauthClientSecret || '',
+            username: creds.oauthUsername || '',
+            password: creds.oauthPassword || '',
+            scope: node.oauthScope || '',
+            audience: node.oauthAudience || '',
+            // Defaults to verifying; only disabled when explicitly unchecked.
+            rejectUnauthorized: node.oauthTlsReject
+          };
         }
       }
 
@@ -230,7 +254,11 @@ module.exports = function (RED) {
       sslCa: { type: 'password' },
       sslCert: { type: 'password' },
       sslKey: { type: 'password' },
-      sslPassphrase: { type: 'password' }
+      sslPassphrase: { type: 'password' },
+      oauthClientId: { type: 'text' },
+      oauthClientSecret: { type: 'password' },
+      oauthUsername: { type: 'text' },
+      oauthPassword: { type: 'password' }
     }
   });
 };

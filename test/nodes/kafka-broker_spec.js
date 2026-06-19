@@ -86,6 +86,38 @@ describe('kafka-suite-broker node', function () {
     });
   });
 
+  it('buildAdapterConfig: sasl-oauthbearer builds oauth config from settings + creds', function (done) {
+    const flow = [{
+      id: 'b1', type: 'kafka-suite-broker',
+      brokers: 'b:9092', authType: 'sasl-oauthbearer',
+      oauthTokenEndpoint: 'https://idp.example.com/oauth/token',
+      oauthGrantType: 'password',
+      oauthScope: 'kafka', oauthAudience: 'https://kafka',
+      oauthTlsReject: false
+    }];
+    const creds = { b1: {
+      oauthClientId: 'cid', oauthClientSecret: 'sec',
+      oauthUsername: 'alice', oauthPassword: 's3cret'
+    } };
+    helper.load(brokerNode, flow, creds, function () {
+      const n = helper.getNode('b1');
+      const cfg = n.getAdapterConfig();
+      cfg.ssl.should.equal(true);
+      cfg.sasl.mechanism.should.equal('oauthbearer');
+      const o = cfg.sasl.oauth;
+      o.tokenEndpoint.should.equal('https://idp.example.com/oauth/token');
+      o.grantType.should.equal('password');
+      o.clientId.should.equal('cid');
+      o.clientSecret.should.equal('sec');
+      o.username.should.equal('alice');
+      o.password.should.equal('s3cret');
+      o.scope.should.equal('kafka');
+      o.audience.should.equal('https://kafka');
+      o.rejectUnauthorized.should.equal(false);
+      done();
+    });
+  });
+
   it('buildAdapterConfig: ssl auth passes CA/cert/key', function (done) {
     const flow = [{
       id: 'b1', type: 'kafka-suite-broker',

@@ -1,0 +1,77 @@
+services:
+  # OAuth 2.0 / OIDC identity provider. Mints bearer tokens for the
+  # password and client_credentials grants — the same role Keycloak plays in a
+  # Strimzi OAUTHBEARER setup. The realm (client, audience mapper, test user) is
+  # imported on startup from test/oauth/keycloak-realm.json.
+  #
+  # KC_HOSTNAME is pinned to "keycloak" so the token issuer (iss) and the
+  # discovery/JWKS URLs all use the in-network hostname that Redpanda resolves.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    hostname: keycloak
+    container_name: kafka-suite-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./test/oauth/keycloak-realm.json:/opt/keycloak/data/import/kafka-realm.json:ro
+    healthcheck:
+      # Keycloak 26 exposes health on the management port 9000.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  # Redpanda with native OIDC OAUTHBEARER validation (no Strimzi broker jars
+  # required). It fetches Keycloak's JWKS via the discovery URL and validates
+  # incoming bearer tokens locally (signature + issuer + audience).
+  redpanda-oauth:
+    image: redpandadata/redpanda:v24.2.7
+    hostname: redpanda-oauth
+    container_name: kafka-suite-redpanda-oauth
+    user: "0:0"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        cp /etc/redpanda-source/redpanda.yaml /etc/redpanda/redpanda.yaml
+        exec /usr/bin/rpk redpanda start --overprovisioned --smp=1 --memory=512M --reserve-memory=0M --check=false
+    ports:
+      - "9096:9096"   # Kafka API on host (distinct from 9092/9192/9094/9095)
+    volumes:
+      - ./test/redpanda-oauth.yaml:/etc/redpanda-source/redpanda.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9644/v1/status/ready || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # One-shot OAUTHBEARER end-to-end test, run from inside the compose network so
+  # it can reach both Keycloak (keycloak:8080) and the SASL broker
+  # (redpanda-oauth:19096) without depending on host port publishing.
+  # Run with:  docker compose -f docker-compose.oauth.yml run --rm oauth-tester
+  oauth-tester:
+    image: node:20-bookworm-slim
+    container_name: kafka-suite-oauth-tester
+    profiles: ["test"]
+    depends_on:
+      redpanda-oauth:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - ./:/app:ro
+    environment:
+      OAUTH_BROKERS: redpanda-oauth:19096
+      OAUTH_TOKEN_URL: http://keycloak:8080/realms/kafka/protocol/openid-connect/token
+      BACKENDS: kafkajs
+    command: ["node", "test/integration/oauth-smoke.js"]

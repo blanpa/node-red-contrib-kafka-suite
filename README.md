@@ -242,6 +242,30 @@ environment.
 - Fully Kafka-protocol-compatible; same configuration as a self-hosted
   cluster. SASL/SSL is supported the same way as for Apache Kafka.
 
+### OAUTHBEARER (OAuth 2.0 / OIDC)
+
+Select **Auth → SASL/OAUTHBEARER** to obtain a bearer token from an OAuth 2.0
+token endpoint. This is the equivalent of the Strimzi
+`org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule` with the
+`JaasClientOauthLoginCallbackHandler`:
+
+| Strimzi `connect.properties` | Broker field |
+| --- | --- |
+| `oauth.token.endpoint.uri` | Token URL |
+| `oauth.grant.type` | Grant (`client_credentials` or `password`) |
+| `oauth.client.id` | Client ID |
+| `oauth.client.secret` | Client Secret (optional) |
+| `oauth.password.grant.username` | Username (password grant) |
+| `oauth.password.grant.password` | Password (password grant) |
+| — | Scope / Audience (optional) |
+
+The token is cached and refreshed automatically before it expires.
+
+- **kafkajs** backend — supports both the `password` and `client_credentials`
+  grants (token fetched in-process).
+- **confluent** backend — `client_credentials` uses librdkafka's native OIDC
+  (`sasl.oauthbearer.method=oidc`); the `password` grant is **kafkajs-only**.
+
 ---
 
 ## Development
@@ -309,6 +333,40 @@ Avro round-trip on every target × backend combination.
 
 > ⚠️ The files in `test/certs/` are **self-signed and for local testing
 > only**. They are git-ignored. Never deploy them.
+
+### OAUTHBEARER (OAuth 2.0 / OIDC) E2E test
+
+A dedicated stack verifies the full SASL/OAUTHBEARER handshake — token
+acquisition **and** broker authentication — against a real OIDC provider:
+
+| Service | Role |
+|---|---|
+| Keycloak (`quay.io/keycloak/keycloak`) | OIDC IdP; realm `kafka`, client `kafka-client`, user `alice` |
+| Redpanda | Broker with native OIDC OAUTHBEARER validation (JWKS from Keycloak) |
+
+```bash
+# kafkajs backend (password + client_credentials grants)
+npm run test:oauth
+
+# both backends (confluent uses native librdkafka OIDC, client_credentials)
+BACKENDS=kafkajs,confluent npm run test:oauth
+
+# leave the stack up afterwards for manual poking
+KEEP_UP=1 npm run test:oauth
+```
+
+The runner starts Keycloak + Redpanda, waits for health, then executes
+`test/integration/oauth-smoke.js` **inside the compose network** (so it reaches
+`keycloak:8080` and `redpanda-oauth:19096` by hostname, independent of host port
+publishing). For each grant it fetches a real bearer token, asserts the JWT
+audience, then runs an admin → produce → consume round-trip over
+SASL/OAUTHBEARER. Expected output: `ALL OAUTHBEARER E2E TESTS PASSED`.
+
+The same credentials map directly to the broker node's OAUTHBEARER fields:
+token URL `http://localhost:8088/realms/kafka/protocol/openid-connect/token`,
+client `kafka-client` / secret `kafka-client-secret`, user `alice` /
+`alice-password` — handy for manual testing in the Node-RED editor against the
+host-published broker port `9096` (with `KEEP_UP=1`).
 
 ### Docker Compose (full stack with Node-RED)
 

@@ -23,7 +23,12 @@
       maxRetryTime: { value: 30000, validate: RED.validators.number() },
       initialRetryTime: { value: 300, validate: RED.validators.number() },
       retries: { value: 5, validate: RED.validators.number() },
-      sslRejectUnauthorized: { value: true }
+      sslRejectUnauthorized: { value: true },
+      oauthTokenEndpoint: { value: '' },
+      oauthGrantType: { value: 'client_credentials' },
+      oauthScope: { value: '' },
+      oauthAudience: { value: '' },
+      oauthTlsReject: { value: true }
     },
     credentials: {
       username: { type: 'text' },
@@ -31,7 +36,11 @@
       sslCa: { type: 'password' },
       sslCert: { type: 'password' },
       sslKey: { type: 'password' },
-      sslPassphrase: { type: 'password' }
+      sslPassphrase: { type: 'password' },
+      oauthClientId: { type: 'text' },
+      oauthClientSecret: { type: 'password' },
+      oauthUsername: { type: 'text' },
+      oauthPassword: { type: 'password' }
     },
     label: function () {
       return this.name || this.brokers || 'kafka broker';
@@ -47,9 +56,16 @@
         'redpanda': { authType: 'none', hint: 'Redpanda (Kafka-compatible)' }
       };
 
+      function updateOAuthGrantFields() {
+        // Username/password only apply to the password grant.
+        var grant = $('#node-config-input-oauthGrantType').val();
+        $('.kafka-oauth-password-fields').toggle(grant === 'password');
+      }
+
       function updateAuthFields() {
         var authType = $('#node-config-input-authType').val();
         $('.kafka-sasl-fields').hide();
+        $('.kafka-oauth-fields').hide();
         $('.kafka-ssl-fields').hide();
         $('.kafka-ssl-cert-fields').hide();
 
@@ -57,12 +73,16 @@
           $('.kafka-sasl-fields').show();
           $('.kafka-ssl-fields').show();
         } else if (authType === 'sasl-oauthbearer') {
+          $('.kafka-oauth-fields').show();
           $('.kafka-ssl-fields').show();
+          updateOAuthGrantFields();
         } else if (authType === 'ssl') {
           $('.kafka-ssl-fields').show();
           $('.kafka-ssl-cert-fields').show();
         }
       }
+
+      $('#node-config-input-oauthGrantType').on('change', updateOAuthGrantFields);
 
       $('#node-config-input-servicePreset').on('change', function () {
         var preset = presets[$(this).val()];
@@ -149,6 +169,51 @@
     <div class="form-row">
       <label for="node-config-input-password"><i class="fa fa-key"></i> Password</label>
       <input type="password" id="node-config-input-password" placeholder="Password / API Secret">
+    </div>
+  </div>
+
+  <div class="kafka-oauth-fields" style="display:none;">
+    <div class="form-row">
+      <label for="node-config-input-oauthTokenEndpoint"><i class="fa fa-link"></i> Token URL</label>
+      <input type="text" id="node-config-input-oauthTokenEndpoint" placeholder="https://idp.example.com/oauth/token">
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthGrantType"><i class="fa fa-handshake-o"></i> Grant</label>
+      <select id="node-config-input-oauthGrantType">
+        <option value="client_credentials">client_credentials</option>
+        <option value="password">password</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthClientId"><i class="fa fa-id-badge"></i> Client ID</label>
+      <input type="text" id="node-config-input-oauthClientId" placeholder="oauth client id">
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthClientSecret"><i class="fa fa-key"></i> Client Secret</label>
+      <input type="password" id="node-config-input-oauthClientSecret" placeholder="optional (confidential clients)">
+    </div>
+    <div class="kafka-oauth-password-fields">
+      <div class="form-row">
+        <label for="node-config-input-oauthUsername"><i class="fa fa-user"></i> Username</label>
+        <input type="text" id="node-config-input-oauthUsername" placeholder="password-grant username">
+      </div>
+      <div class="form-row">
+        <label for="node-config-input-oauthPassword"><i class="fa fa-lock"></i> Password</label>
+        <input type="password" id="node-config-input-oauthPassword" placeholder="password-grant password">
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthScope"><i class="fa fa-tags"></i> Scope</label>
+      <input type="text" id="node-config-input-oauthScope" placeholder="optional (e.g. kafka)">
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthAudience"><i class="fa fa-bullseye"></i> Audience</label>
+      <input type="text" id="node-config-input-oauthAudience" placeholder="optional (e.g. https://kafka)">
+    </div>
+    <div class="form-row">
+      <label for="node-config-input-oauthTlsReject"><i class="fa fa-shield"></i> Verify Token TLS</label>
+      <input type="checkbox" id="node-config-input-oauthTlsReject" style="width:auto;">
+      <span style="font-size:0.9em;color:#aaa;"> Reject unauthorized certs on token endpoint</span>
     </div>
   </div>
 
@@ -245,4 +310,21 @@
   <h3>Authentication</h3>
   <p>Supports SASL/PLAIN, SCRAM-SHA-256/512, OAUTHBEARER, and mutual TLS (mTLS).
   Credentials are stored securely and never exported with flows.</p>
+
+  <h3>OAUTHBEARER (OAuth 2.0)</h3>
+  <p>Acquires a bearer token from an OAuth 2.0 token endpoint, equivalent to the
+  Strimzi <code>OAuthBearerLoginModule</code> client login callback. Configure:</p>
+  <ul>
+    <li><b>Token URL</b> - OAuth token endpoint (<code>oauth.token.endpoint.uri</code>)</li>
+    <li><b>Grant</b> - <code>client_credentials</code> or <code>password</code> (<code>oauth.grant.type</code>)</li>
+    <li><b>Client ID</b> / <b>Client Secret</b> - <code>oauth.client.id</code> / <code>oauth.client.secret</code> (secret optional for public clients)</li>
+    <li><b>Username</b> / <b>Password</b> - only for the <code>password</code> grant
+        (<code>oauth.password.grant.username</code> / <code>...password</code>)</li>
+    <li><b>Scope</b> / <b>Audience</b> - optional token request parameters</li>
+    <li><b>Verify Token TLS</b> - uncheck to allow self-signed certs on the token endpoint</li>
+  </ul>
+  <p>The token is cached and refreshed automatically before it expires. On the
+  <b>confluent</b> backend, <code>client_credentials</code> uses librdkafka's native
+  OIDC support; the <code>password</code> grant is only available on the
+  <b>kafkajs</b> backend.</p>
 </script>

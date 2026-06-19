@@ -82,6 +82,42 @@ describe('KafkaJSAdapter', function () {
       cfg.sasl.username.should.equal('u');
     });
 
+    it('builds an oauthBearerProvider from declarative OAuth config', function () {
+      const a = new KafkaJSAdapter({
+        brokers: ['b:9092'],
+        ssl: true,
+        sasl: {
+          mechanism: 'oauthbearer',
+          oauth: {
+            grantType: 'password',
+            tokenEndpoint: 'https://idp/t',
+            clientId: 'cid', username: 'u', password: 'p'
+          }
+        }
+      });
+      const cfg = a._buildConfig();
+      cfg.sasl.mechanism.should.equal('oauthbearer');
+      cfg.sasl.oauthBearerProvider.should.be.a.Function();
+    });
+
+    it('passes through a pre-built oauthBearerProvider function', function () {
+      const provider = async () => ({ value: 'tok' });
+      const a = new KafkaJSAdapter({
+        brokers: ['b:9092'], ssl: true,
+        sasl: { mechanism: 'oauthbearer', oauthBearerProvider: provider }
+      });
+      const cfg = a._buildConfig();
+      cfg.sasl.oauthBearerProvider.should.equal(provider);
+    });
+
+    it('throws when OAUTHBEARER has no provider or oauth config', function () {
+      const a = new KafkaJSAdapter({
+        brokers: ['b:9092'], ssl: true,
+        sasl: { mechanism: 'oauthbearer' }
+      });
+      (() => a._buildConfig()).should.throw(/no OAuth token endpoint configured/);
+    });
+
     it('builds SSL config with CA/cert/key', function () {
       const a = new KafkaJSAdapter({
         brokers: ['b:9092'],

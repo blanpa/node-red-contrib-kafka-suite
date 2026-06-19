@@ -99,6 +99,45 @@ describeIfAvailable('ConfluentAdapter', function () {
       cfg['security.protocol'].should.equal('SASL_PLAINTEXT');
       cfg['sasl.mechanism'].should.equal('PLAIN');
     });
+
+    it('maps OAUTHBEARER client_credentials to native librdkafka OIDC props', function () {
+      const a = new ConfluentAdapter({
+        brokers: ['b:9092'], ssl: true,
+        sasl: {
+          mechanism: 'oauthbearer',
+          oauth: {
+            grantType: 'client_credentials',
+            tokenEndpoint: 'https://idp/t',
+            clientId: 'cid',
+            clientSecret: 'sec',
+            scope: 'kafka'
+          }
+        }
+      });
+      const cfg = a._buildConfig();
+      cfg['sasl.mechanism'].should.equal('OAUTHBEARER');
+      cfg['sasl.oauthbearer.method'].should.equal('oidc');
+      cfg['sasl.oauthbearer.token.endpoint.url'].should.equal('https://idp/t');
+      cfg['sasl.oauthbearer.client.id'].should.equal('cid');
+      cfg['sasl.oauthbearer.client.secret'].should.equal('sec');
+      cfg['sasl.oauthbearer.scope'].should.equal('kafka');
+      should(cfg['sasl.username']).be.undefined();
+    });
+
+    it('rejects OAUTHBEARER password grant on the confluent backend', function () {
+      const a = new ConfluentAdapter({
+        brokers: ['b:9092'], ssl: true,
+        sasl: {
+          mechanism: 'oauthbearer',
+          oauth: {
+            grantType: 'password',
+            tokenEndpoint: 'https://idp/t',
+            clientId: 'cid', username: 'u', password: 'p'
+          }
+        }
+      });
+      (() => a._buildConfig()).should.throw(/not supported on the confluent backend/);
+    });
   });
 
   describe('connect() reachability check', function () {

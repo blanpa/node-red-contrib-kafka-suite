@@ -1,0 +1,54 @@
+redpanda:
+  data_directory: /var/lib/redpanda/data
+  node_id: 0
+  seed_servers: []
+  rpc_server:
+    address: 0.0.0.0
+    port: 33145
+  kafka_api:
+    - address: 0.0.0.0
+      port: 29092
+      name: INTERNAL
+      authentication_method: none
+    - address: 0.0.0.0
+      port: 9096
+      name: EXTERNAL
+      authentication_method: sasl
+    - address: 0.0.0.0
+      port: 19096
+      name: CONTAINER
+      authentication_method: sasl
+  admin:
+    - address: 0.0.0.0
+      port: 9644
+  advertised_rpc_api:
+    address: redpanda-oauth
+    port: 33145
+  advertised_kafka_api:
+    # auth-none, in-network: used by rpk/admin bootstrap
+    - address: redpanda-oauth
+      port: 29092
+      name: INTERNAL
+    # SASL/OAUTHBEARER, advertised to the host
+    - address: localhost
+      port: 9096
+      name: EXTERNAL
+    # SASL/OAUTHBEARER, advertised in-network for the oauth-tester container
+    - address: redpanda-oauth
+      port: 19096
+      name: CONTAINER
+  developer_mode: true
+  auto_create_topics_enabled: true
+  # --- SASL / OAUTHBEARER (OIDC) ---
+  enable_sasl: true
+  kafka_enable_authorization: false
+  sasl_mechanisms:
+    - SCRAM
+    - OAUTHBEARER
+  # Redpanda validates the JWT locally via the IdP's JWKS, discovered here.
+  # Uses the in-network hostname so the issuer matches what Keycloak advertises.
+  oidc_discovery_url: http://keycloak:8080/realms/kafka/.well-known/openid-configuration
+  oidc_token_audience: kafka
+  oidc_principal_mapping: $.sub
+rpk:
+  overprovisioned: true
