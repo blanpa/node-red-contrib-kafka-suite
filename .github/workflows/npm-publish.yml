@@ -37,8 +37,10 @@ jobs:
       - name: Upgrade npm
         run: npm install -g npm@latest
 
+      # This repo does not track a package-lock.json, so use `npm install`
+      # (npm ci requires a committed lockfile).
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run tests
         run: npm test
