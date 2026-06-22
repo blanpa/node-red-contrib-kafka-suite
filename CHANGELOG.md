@@ -4,6 +4,42 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] — 2026-06-22 (Beta)
+
+### Changed
+
+- **Palette grouping.** The three flow nodes (`kafka-suite-producer`,
+  `kafka-suite-consumer`, `kafka-suite-admin`) now appear under a dedicated
+  **Kafka Suite** category in the Node-RED palette instead of the generic
+  `kafka-suite` / `kafka` heading. The two config nodes stay under
+  *Configuration nodes*.
+
+### Documentation
+
+- README: added a **Nodes → palette grouping** section with a diagram showing
+  the new *Kafka Suite* category and the on-demand config nodes.
+- Backfilled the previously missing [0.0.3] changelog entry.
+
+## [0.0.3] — 2026-06-19 (Beta)
+
+### Added
+
+- **SASL/OAUTHBEARER (OAuth 2.0 / OIDC) authentication.** Configurable token
+  endpoint with the `password` and `client_credentials` grants (Strimzi /
+  Keycloak-style), client id/secret, username/password, scope, audience, and
+  per-endpoint TLS verification. Selectable from the broker config node and
+  supported on both backends. End-to-end tested against Keycloak + Redpanda.
+
+### Changed
+
+- CI: publish to npm via Trusted Publishing on version tags; the workflow uses
+  `npm install` (the repo tracks no committed lockfile, so `npm ci` failed).
+
+### Documentation
+
+- README: refreshed the architecture overview and added an OAUTHBEARER flow
+  diagram. Simplified the Mermaid diagrams so GitHub renders them reliably.
+
 ## [0.0.2] — 2026-04-27 (Beta)
 
 ### Fixed
@@ -93,5 +129,7 @@ managed services with paid accounts.
   switch — it is now wired into the producer, which calls `registerSchema()`
   before the first `encode()` when `msg.schemaDefinition` is supplied.
 
+[0.0.4]: https://github.com/blanpa/node-red-contrib-kafka-suite/releases/tag/v0.0.4
+[0.0.3]: https://github.com/blanpa/node-red-contrib-kafka-suite/releases/tag/v0.0.3
 [0.0.2]: https://github.com/blanpa/node-red-contrib-kafka-suite/releases/tag/v0.0.2
 [0.0.1]: https://github.com/blanpa/node-red-contrib-kafka-suite/releases/tag/v0.0.1

@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/npm/l/node-red-contrib-kafka-suite.svg)](LICENSE)
 [![Node-RED](https://img.shields.io/badge/Node--RED-%E2%89%A53.0-8F0000.svg)](https://nodered.org)
 
-> **Status: 0.0.3 — Beta.** Functionally complete and end-to-end tested against
+> **Status: 0.0.4 — Beta.** Functionally complete and end-to-end tested against
 > five local Kafka setups (Confluent CP, Redpanda PLAINTEXT, Redpanda SASL_SSL,
 > mTLS Aiven-style, and Keycloak + Redpanda OAUTHBEARER/OIDC) on both client
 > backends (`kafkajs`, `@confluentinc/kafka-javascript`). It has **not yet** been
@@ -161,6 +161,28 @@ the Node-RED menu → *Import*.
 ---
 
 ## Nodes
+
+In the Node-RED editor the three flow nodes are grouped under a dedicated
+**Kafka Suite** category in the left-hand palette. The two config nodes
+(`kafka-suite-broker`, `kafka-suite-schema-registry`) have no palette entry —
+they are created on demand from the config dropdown of a flow node and live
+under *Configuration nodes* in the sidebar.
+
+```mermaid
+flowchart TB
+    subgraph PAL["Palette: Kafka Suite"]
+        P["kafka-suite-producer"]
+        C["kafka-suite-consumer"]
+        A["kafka-suite-admin"]
+    end
+
+    subgraph CFG["Configuration nodes"]
+        B["kafka-suite-broker"]
+        SR["kafka-suite-schema-registry"]
+    end
+
+    PAL -.->|created on demand| CFG
+```
 
 ### `kafka-suite-broker` (config node)
 
