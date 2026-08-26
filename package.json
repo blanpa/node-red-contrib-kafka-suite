@@ -15,7 +15,7 @@
     "iot"
   ],
   "author": "blanpa",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/blanpa/node-red-contrib-kafka-suite.git"
@@ -30,7 +30,8 @@
     "examples/",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=16.0.0"
