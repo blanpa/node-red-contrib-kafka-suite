@@ -4,6 +4,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/node-red-contrib-kafka-suite.svg)](https://www.npmjs.com/package/node-red-contrib-kafka-suite)
 [![license](https://img.shields.io/npm/l/node-red-contrib-kafka-suite.svg)](LICENSE)
 [![Node-RED](https://img.shields.io/badge/Node--RED-%E2%89%A53.0-8F0000.svg)](https://nodered.org)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/blanpa)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/blanpa)
 
 > **Status: 0.0.4 — Beta.** Functionally complete and end-to-end tested against
 > five local Kafka setups (Confluent CP, Redpanda PLAINTEXT, Redpanda SASL_SSL,
@@ -519,4 +521,20 @@ When filing a bug, including the following helps a lot:
 
 ## License
 
-MIT
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Copyright 2026 blanpa
+
+## Contributing and forks
+
+Pull requests are welcome, including large ones. If you are planning a bigger
+change — a dependency migration, a restructure, new nodes — please open an issue
+first. We are happy to discuss it and to land substantial work here; that is
+usually less effort than maintaining a parallel package, and it keeps a single
+place for users to report bugs.
+
+If you do publish a fork under its own package name, please also rename the
+Node-RED node type IDs (for example `myprefix-kafka-suite-*`) and use your own palette
+category. Node-RED refuses to register a node type that is already claimed, so
+identical type IDs make it impossible to install both packages side by side.
+

@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-kafka-suite",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "BETA — A comprehensive Kafka integration for Node-RED with producer, consumer, admin, and Schema Registry nodes. Dual backends (kafkajs / @confluentinc/kafka-javascript) and presets for Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, and Redpanda. Please file issues at https://github.com/blanpa/node-red-contrib-kafka-suite/issues.",
   "keywords": [
     "node-red",
@@ -15,7 +15,7 @@
     "iot"
   ],
   "author": "blanpa",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/blanpa/node-red-contrib-kafka-suite.git"
@@ -30,7 +30,8 @@
     "examples/",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=16.0.0"
