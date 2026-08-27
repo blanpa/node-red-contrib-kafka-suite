@@ -4,8 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/node-red-contrib-kafka-suite.svg)](https://www.npmjs.com/package/node-red-contrib-kafka-suite)
 [![license](https://img.shields.io/npm/l/node-red-contrib-kafka-suite.svg)](LICENSE)
 [![Node-RED](https://img.shields.io/badge/Node--RED-%E2%89%A53.0-8F0000.svg)](https://nodered.org)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/blanpa)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/blanpa)
+[![Sponsor](https://img.shields.io/github/sponsors/blanpa?label=Sponsor&logo=githubsponsors&logoColor=white&color=EA4AAA)](https://github.com/sponsors/blanpa)
 
 > **Status: 0.0.4 — Beta.** Functionally complete and end-to-end tested against
 > five local Kafka setups (Confluent CP, Redpanda PLAINTEXT, Redpanda SASL_SSL,
@@ -518,6 +517,18 @@ When filing a bug, including the following helps a lot:
 - Backend in use (`kafkajs` or `confluent`) and broker distribution
 - The minimal reproducing flow as a JSON export
 - The complete stack trace from the Node-RED debug pane
+
+## Sponsor this project
+
+This package is developed and maintained in my own time.
+If it saves you some, consider supporting it:
+
+<a href="https://github.com/sponsors/blanpa">
+  <img height="41" alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor%20on%20GitHub-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white">
+</a>
+<a href="https://buymeacoffee.com/blanpa">
+  <img height="41" alt="Buy Me a Coffee" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png">
+</a>
 
 ## License
 
