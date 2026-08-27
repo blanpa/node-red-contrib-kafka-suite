@@ -4,6 +4,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/node-red-contrib-kafka-suite.svg)](https://www.npmjs.com/package/node-red-contrib-kafka-suite)
 [![license](https://img.shields.io/npm/l/node-red-contrib-kafka-suite.svg)](LICENSE)
 [![Node-RED](https://img.shields.io/badge/Node--RED-%E2%89%A53.0-8F0000.svg)](https://nodered.org)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/blanpa)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/blanpa)
 
 > **Status: 0.0.4 — Beta.** Functionally complete and end-to-end tested against
 > five local Kafka setups (Confluent CP, Redpanda PLAINTEXT, Redpanda SASL_SSL,
