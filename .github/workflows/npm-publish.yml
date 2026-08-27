@@ -34,8 +34,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # Trusted Publishing requires npm >= 11.5.1; the runner ships an older one.
+      # Pinned to the 11 line on purpose: npm@latest is now 12.x, which requires
+      # node ^22.22.2 || ^24.15.0 || >=26 and fails to install on this runner.
       - name: Upgrade npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@^11
 
       # This repo does not track a package-lock.json, so use `npm install`
       # (npm ci requires a committed lockfile).
