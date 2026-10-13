@@ -179,6 +179,35 @@ describe('kafka-suite-schema-registry node', function () {
       });
     });
 
+    it('registerSchema caches registrations of the same definition', function (done) {
+      loadAndStub(async (r) => {
+        let calls = 0;
+        r.SchemaType = { AVRO: 'AVRO' };
+        r.registry = { register: async function () { calls++; return { id: 5 }; } };
+        const schema = { type: 'record', name: 'S', fields: [] };
+        (await r.registerSchema('s-value', schema)).should.equal(5);
+        (await r.registerSchema('s-value', schema)).should.equal(5);
+        calls.should.equal(1);
+        // A different subject is a different registration
+        await r.registerSchema('other-value', schema);
+        calls.should.equal(2);
+        done();
+      });
+    });
+
+    it('encode uses an explicit schema id without a lookup', function (done) {
+      loadAndStub(async (r) => {
+        let usedId = null;
+        r.registry = {
+          getLatestSchemaId: async function () { throw new Error('should not look up'); },
+          encode: async function (id) { usedId = id; return Buffer.from([0]); }
+        };
+        await r.encode('s-value', { a: 1 }, 9);
+        usedId.should.equal(9);
+        done();
+      });
+    });
+
     it('registerSchema accepts string schemas (Protobuf IDL)', function (done) {
       loadAndStub(async (r) => {
         let registerCalledWith = null;

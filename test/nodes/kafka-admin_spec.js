@@ -11,13 +11,14 @@ describe('kafka-suite-admin node', function () {
   beforeEach(function (done) { helper.startServer(done); });
   afterEach(function (done) { helper.unload().then(() => helper.stopServer(done)); });
 
-  function loadFlow(cb) {
+  function loadFlow(extraProps, cb) {
+    if (typeof extraProps === 'function') { cb = extraProps; extraProps = {}; }
     const flow = [
       {
         id: 'b1', type: 'kafka-suite-broker',
         brokers: 'localhost:9092', backend: 'kafkajs', authType: 'none'
       },
-      { id: 'a1', type: 'kafka-suite-admin', broker: 'b1', wires: [['h1']] },
+      Object.assign({ id: 'a1', type: 'kafka-suite-admin', broker: 'b1', wires: [['h1']] }, extraProps),
       { id: 'h1', type: 'helper' }
     ];
     helper.load([brokerNode, adminNode], flow, function () {
@@ -201,6 +202,56 @@ describe('kafka-suite-admin node', function () {
         String(errored).should.match(/Unknown action/);
         done();
       }, 50);
+    });
+  });
+
+  it('blocks destructive actions when allowDestructive is false', function (done) {
+    loadFlow({ allowDestructive: false }, (a) => {
+      let deleted = false;
+      a.admin = { deleteTopics: async function () { deleted = true; } };
+      let errored = null;
+      a.error = function (e) { errored = e; };
+      a.receive({ action: 'deleteTopic', topic: 'precious' });
+      setTimeout(() => {
+        deleted.should.equal(false);
+        String(errored).should.match(/destructive/);
+        done();
+      }, 50);
+    });
+  });
+
+  it('non-destructive actions still work when allowDestructive is false', function (done) {
+    loadFlow({ allowDestructive: false }, (a, b, h) => {
+      a.admin = { listTopics: async () => ['t'] };
+      h.on('input', function (msg) {
+        msg.payload.should.deepEqual(['t']);
+        done();
+      });
+      a.receive({ action: 'listTopics' });
+    });
+  });
+
+  it('a fixed action from the config overrides msg.action', function (done) {
+    loadFlow({ action: 'listTopics' }, (a, b, h) => {
+      a.admin = { listTopics: async () => ['t'] };
+      h.on('input', function (msg) {
+        msg.action.should.equal('listTopics');
+        done();
+      });
+      a.receive({ action: 'deleteTopic', topic: 'x' });
+    });
+  });
+
+  it('createTopic defaults partitions/replication to the broker defaults (-1)', function (done) {
+    loadFlow((a, b, h) => {
+      let captured;
+      a.admin = { createTopics: async function (t) { captured = t; return true; } };
+      h.on('input', function () {
+        captured[0].numPartitions.should.equal(-1);
+        captured[0].replicationFactor.should.equal(-1);
+        done();
+      });
+      a.receive({ action: 'createTopic', topic: 'newtopic' });
     });
   });
 });

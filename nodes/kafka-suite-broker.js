@@ -1,6 +1,7 @@
 'use strict';
 
 const { createClient } = require('../lib/client-factory');
+const { intOr, normalizeBroker, Backoff, formatDelay } = require('../lib/util');
 
 module.exports = function (RED) {
   function KafkaBrokerNode(config) {
@@ -9,18 +10,21 @@ module.exports = function (RED) {
 
     // Config properties
     node.name = config.name;
-    node.brokers = (config.brokers || 'localhost:9092').split(',').map(b => b.trim()).filter(Boolean);
+    const rawBrokers = (config.brokers || 'localhost:9092').split(',').map(b => b.trim()).filter(Boolean);
     node.clientId = config.clientId || 'node-red-kafka-suite';
 
-    // Validate broker URLs early. Accepted forms:
-    //   host:port              (most common)
-    //   PROTOCOL://host:port   (e.g. SASL_SSL://kafka.example.com:9094)
-    // Anything else (missing port, whitespace, invalid host) is rejected.
-    const brokerRegex = /^(?:[A-Z_]+:\/\/)?[a-zA-Z0-9.-]+:\d{1,5}$/;
-    node.invalidBrokers = node.brokers.filter(b => !brokerRegex.test(b));
+    // Accepted forms: host:port or PROTOCOL://host:port (e.g.
+    // SASL_SSL://kafka.example.com:9094). The protocol prefix is stripped
+    // because neither client library understands it; security settings come
+    // from the auth configuration.
+    node.brokers = rawBrokers.map(normalizeBroker).filter(Boolean);
+    node.invalidBrokers = rawBrokers.filter(b => !normalizeBroker(b));
     node.backend = config.backend || 'kafkajs';
     node.servicePreset = config.servicePreset || 'self-hosted';
     node.authType = config.authType || 'none';
+    // TLS for SASL mechanisms. Defaults to on (configs saved before this
+    // option existed always used TLS); off means SASL_PLAINTEXT.
+    node.saslSsl = config.saslSsl !== false;
     // OAuth 2.0 (SASL/OAUTHBEARER) non-secret settings
     node.oauthTokenEndpoint = config.oauthTokenEndpoint || '';
     node.oauthGrantType = config.oauthGrantType || 'client_credentials';
@@ -29,11 +33,11 @@ module.exports = function (RED) {
     // Verify TLS on the token endpoint unless explicitly disabled (checkbox).
     node.oauthTlsReject = config.oauthTlsReject !== false;
     node.logLevel = config.logLevel || 'warn';
-    node.connectionTimeout = parseInt(config.connectionTimeout) || 3000;
-    node.requestTimeout = parseInt(config.requestTimeout) || 30000;
-    node.maxRetryTime = parseInt(config.maxRetryTime) || 30000;
-    node.initialRetryTime = parseInt(config.initialRetryTime) || 300;
-    node.retries = parseInt(config.retries) || 5;
+    node.connectionTimeout = intOr(config.connectionTimeout, 3000, 1);
+    node.requestTimeout = intOr(config.requestTimeout, 30000, 1);
+    node.maxRetryTime = intOr(config.maxRetryTime, 30000, 0);
+    node.initialRetryTime = intOr(config.initialRetryTime, 300, 1);
+    node.retries = intOr(config.retries, 5, 0);
     node.sslRejectUnauthorized = config.sslRejectUnauthorized !== false;
 
     // User registry (MQTT-style pattern)
@@ -41,7 +45,11 @@ module.exports = function (RED) {
     node.client = null;
     node.connected = false;
     node.connecting = false;
-    node.closing = false;
+    // Bumped by doDisconnect() so a connect attempt still in flight knows
+    // its result is stale and must not be adopted.
+    node._connectGen = 0;
+    node._reconnectTimer = null;
+    node._reconnectBackoff = new Backoff(node.initialRetryTime, Math.max(node.maxRetryTime, node.initialRetryTime));
 
     /**
      * Build adapter config from node config + credentials
@@ -59,7 +67,8 @@ module.exports = function (RED) {
       };
 
       // SSL configuration
-      const needsSSL = ['sasl-plain', 'sasl-scram-256', 'sasl-scram-512', 'sasl-oauthbearer', 'ssl'].includes(node.authType);
+      const isSasl = node.authType.startsWith('sasl-');
+      const needsSSL = node.authType === 'ssl' || (isSasl && node.saslSsl);
       if (needsSSL) {
         adapterConfig.ssl = true;
         adapterConfig.sslRejectUnauthorized = node.sslRejectUnauthorized;
@@ -72,7 +81,7 @@ module.exports = function (RED) {
       }
 
       // SASL configuration
-      if (node.authType.startsWith('sasl-')) {
+      if (isSasl) {
         const creds = node.credentials || {};
         const mechanism = {
           'sasl-plain': 'plain',
@@ -110,89 +119,89 @@ module.exports = function (RED) {
     };
 
     /**
-     * Connect to Kafka
+     * Connect to Kafka. The adapter's connect() is a reachability probe; on
+     * success every registered child is told to start its producer/consumer/
+     * admin. On failure we retry with exponential backoff (initialRetryTime,
+     * doubling up to maxRetryTime).
      */
     node.doConnect = async function () {
       if (node.connected || node.connecting) return;
       if (node.invalidBrokers.length > 0) {
         node.setAllStatus({ fill: 'red', shape: 'ring', text: 'invalid broker URL' });
+        // Every registering child calls doConnect(); report the config error once.
+        if (node._invalidReported) return;
+        node._invalidReported = true;
         node.error('Invalid broker URL(s): ' + node.invalidBrokers.join(', ') +
           '. Expected host:port (or PROTOCOL://host:port).');
         return;
       }
+      const gen = node._connectGen;
       node.connecting = true;
       node.setAllStatus({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
 
+      let client = null;
       try {
-        const adapterConfig = node.getAdapterConfig();
-        node.client = createClient(node.backend, adapterConfig);
-        // Forward disconnect/error events from the underlying client so we
-        // notice when a previously healthy connection drops.
-        if (typeof node.client.on === 'function') {
-          node.client.on('disconnected', () => node._handleClientLost('disconnected'));
+        client = createClient(node.backend, node.getAdapterConfig());
+        await client.connect();
+        if (gen !== node._connectGen) {
+          // Disconnected while we were connecting: drop this client.
+          try { await client.disconnect(); } catch (e) { /* ignore */ }
+          return;
         }
-        await node.client.connect();
+        node.client = client;
         node.connected = true;
         node.connecting = false;
-        node.setAllStatus({ fill: 'green', shape: 'dot', text: 'connected' });
+        node._reconnectBackoff.reset();
         node.log('Connected to Kafka brokers: ' + node.brokers.join(', '));
+        node._notifyUsers('_onBrokerConnected');
       } catch (err) {
+        if (gen !== node._connectGen) return;
         node.connected = false;
         node.connecting = false;
+        const delay = node._scheduleReconnect();
         node.setAllStatus({ fill: 'red', shape: 'ring', text: 'error: ' + err.message });
-        node.error('Failed to connect to Kafka: ' + err.message);
-        // Schedule reconnect
-        node._scheduleReconnect();
+        node.error('Failed to connect to Kafka: ' + err.message +
+          ' (retrying in ' + formatDelay(delay) + ')');
       }
     };
 
     /**
-     * Schedule a reconnect attempt with capped exponential-style backoff
-     * (delegates the actual interval growth to the underlying adapter via
-     * initialRetryTime; we just keep retrying on failure).
+     * Schedule a reconnect attempt after the next backoff delay. Returns the
+     * delay in ms.
      */
     node._scheduleReconnect = function () {
       if (node._reconnectTimer) clearTimeout(node._reconnectTimer);
+      const delay = node._reconnectBackoff.next();
       node._reconnectTimer = setTimeout(() => {
         node._reconnectTimer = null;
-        if (!node.closing && Object.keys(node.users).length > 0) {
+        if (Object.keys(node.users).length > 0) {
           node.doConnect();
         }
-      }, node.initialRetryTime);
-    };
-
-    /**
-     * Called when an established Kafka connection drops unexpectedly.
-     */
-    node._handleClientLost = function (reason) {
-      if (node.closing || !node.connected) return;
-      node.connected = false;
-      node.client = null;
-      node.setAllStatus({ fill: 'yellow', shape: 'ring', text: 'reconnecting (' + reason + ')' });
-      node.warn('Kafka connection lost (' + reason + '), scheduling reconnect');
-      node._scheduleReconnect();
+      }, delay);
+      return delay;
     };
 
     /**
      * Disconnect from Kafka
      */
     node.doDisconnect = async function (done) {
-      node.closing = true;
+      node._connectGen++;
       if (node._reconnectTimer) {
         clearTimeout(node._reconnectTimer);
         node._reconnectTimer = null;
       }
-      if (node.client) {
+      node._reconnectBackoff.reset();
+      const client = node.client;
+      node.client = null;
+      node.connected = false;
+      node.connecting = false;
+      if (client) {
         try {
-          await node.client.disconnect();
+          await client.disconnect();
         } catch (err) {
           node.warn('Error disconnecting from Kafka: ' + err.message);
         }
-        node.client = null;
       }
-      node.connected = false;
-      node.connecting = false;
-      node.closing = false;
       node.setAllStatus({});
       if (done) done();
     };
@@ -202,12 +211,14 @@ module.exports = function (RED) {
      */
     node.register = function (childNode) {
       node.users[childNode.id] = childNode;
-      if (Object.keys(node.users).length === 1) {
-        node.doConnect();
-      } else if (node.connected) {
-        childNode.status({ fill: 'green', shape: 'dot', text: 'connected' });
+      if (node.connected) {
+        if (typeof childNode._onBrokerConnected === 'function') childNode._onBrokerConnected();
       } else if (node.connecting) {
         childNode.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
+      } else if (node._reconnectTimer) {
+        childNode.status({ fill: 'yellow', shape: 'ring', text: 'waiting to reconnect...' });
+      } else {
+        node.doConnect();
       }
     };
 
@@ -228,9 +239,20 @@ module.exports = function (RED) {
      */
     node.setAllStatus = function (status) {
       for (const id in node.users) {
-        if (node.users.hasOwnProperty(id)) {
+        if (Object.prototype.hasOwnProperty.call(node.users, id)) {
           node.users[id].status(status);
         }
+      }
+    };
+
+    /**
+     * Call a lifecycle hook (e.g. _onBrokerConnected) on every child that
+     * implements it.
+     */
+    node._notifyUsers = function (hook) {
+      for (const id of Object.keys(node.users)) {
+        const child = node.users[id];
+        if (child && typeof child[hook] === 'function') child[hook]();
       }
     };
 

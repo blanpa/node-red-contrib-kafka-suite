@@ -188,16 +188,21 @@ flowchart TB
 ### `kafka-suite-broker` (config node)
 
 Shared connection used by all other nodes. Manages the Kafka client lifecycle
-with automatic connect/disconnect based on the registered child nodes.
+with automatic connect/disconnect based on the registered child nodes. If the
+cluster is unreachable, connecting is retried with exponential backoff
+(`Init Retry`, doubling up to `Max Retry`). Producers, consumers and admin
+nodes start as soon as the broker connects; if their own setup fails (missing
+topic, ACL denied, ...) they retry with backoff as well.
 
 | Setting | Description |
 |---|---|
 | Service Preset | Auto-fills auth and SSL for managed services (Confluent Cloud, AWS MSK, Azure Event Hubs, Aiven, Redpanda, self-hosted). |
-| Brokers | Comma-separated list of broker addresses (`host:port` or `PROTOCOL://host:port`). Validated in the editor. |
+| Brokers | Comma-separated list of broker addresses (`host:port` or `PROTOCOL://host:port`; the prefix is stripped, security comes from Auth). Validated in the editor. IPv6 literals are not supported. |
 | Backend | `kafkajs` (default, pure JS) or `confluent` (native librdkafka). |
 | Auth | None, SASL/PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, OAUTHBEARER, SSL/mTLS. |
 | OAUTHBEARER | Token URL, grant (`password` / `client_credentials`), client id/secret, username/password, scope, audience, per-endpoint TLS verify. See [OAUTHBEARER](#oauthbearer-oauth-20--oidc). |
-| SSL | CA cert, client cert, client key, passphrase, `rejectUnauthorized`. |
+| Use TLS | For SASL mechanisms: `SASL_SSL` (default) or, unchecked, `SASL_PLAINTEXT`. |
+| SSL | CA cert (whenever TLS is on), client cert, client key, passphrase (mTLS), `rejectUnauthorized`. |
 
 ### `kafka-suite-producer`
 
@@ -211,10 +216,10 @@ upgrade notice when running on `kafkajs`.
 |---|---|---|
 | `payload` | string \| Buffer \| object \| Array | Message value. Arrays trigger batch mode. |
 | `topic` | string | Target topic (overrides the node configuration). |
-| `key` | string | Message key for partitioning. |
+| `key` | string \| Buffer | Message key for partitioning. Buffers are sent as binary keys. |
 | `partition` | number | Explicit partition number (otherwise key-based hashing). |
-| `headers` | object | Message headers as a key/value map. |
-| `schemaDefinition` | object | If a Schema Registry is attached and `autoRegister` is enabled, the producer will register this schema before encoding. |
+| `headers` | object | Message headers as a key/value map. Read from the property configured in **Headers from** (default `msg.headers`). Numbers/booleans are stringified, objects JSON-encoded, `null` values dropped. |
+| `schemaDefinition` | object | If a Schema Registry is attached and `autoRegister` is enabled, the producer registers this schema and encodes with it. Registrations are cached, so sending it on every message costs no extra round-trip. |
 | `schemaType` | string | `AVRO`, `JSON`, or `PROTOBUF`. Defaults to `AVRO`. |
 
 **Output** (on success): original `msg` plus `msg.kafka =
@@ -224,6 +229,11 @@ sends across multiple partitions).
 
 **Errors** are raised through Node-RED's standard error channel — catch
 them with a `catch` node scoped to the producer.
+
+| Setting | Description |
+|---|---|
+| Headers from | `msg` property holding the Kafka headers (default `headers`). `msg.headers` is also set by `http in`; use e.g. `kafkaHeaders` behind HTTP nodes so request headers are not forwarded to Kafka. |
+| Auto-create | Let the broker create missing topics (default on). |
 
 ### `kafka-suite-consumer`
 
@@ -235,8 +245,11 @@ Consumes messages from Kafka topics using consumer groups.
 | Group ID | Consumer group ID. Auto-generated if empty. |
 | Start from | `latest` (only new messages) or `earliest` (replay from the start). |
 | Format | `string` (UTF-8 decode), `json` (parse JSON), or `raw` (raw `Buffer`). |
-| Auto Commit | Enable/disable automatic offset commits. When off, call `msg.commit()` from a downstream node. |
+| Key format | `string` (UTF-8 decode) or `raw` (`Buffer`, for binary keys). |
+| Headers to | `msg` property receiving the Kafka headers (default `headers`). Use e.g. `kafkaHeaders` when the message goes on to HTTP nodes. |
+| Auto Commit | Enable/disable automatic offset commits. When off, commit each processed message (see below). |
 | Concurrency | Number of partitions to consume in parallel. |
+| Session Timeout / Heartbeat | Consumer-group session timeout and heartbeat interval (default 30000 / 3000 ms). |
 
 **Output** (on `msg`):
 
@@ -244,7 +257,7 @@ Consumes messages from Kafka topics using consumer groups.
 |---|---|---|
 | `payload` | any | Decoded message value. |
 | `topic` | string | Source topic. |
-| `key` | string | Message key. |
+| `key` | string \| Buffer | Message key (Buffer with key format `raw`). |
 | `partition` | number | Source partition. |
 | `offset` | string | Message offset. |
 | `timestamp` | string | Message timestamp. |
@@ -252,16 +265,28 @@ Consumes messages from Kafka topics using consumer groups.
 | `commit()` | function | Manual commit callback (only present when auto-commit is off). |
 
 **Control input**: send `msg.action = "pause"` or `msg.action = "resume"` to
-pause/resume consumption from upstream nodes.
+pause/resume consumption from upstream nodes. A pause survives a consumer
+restart.
+
+**Manual commit**: with auto-commit off, either call `msg.commit()` in a
+function node, or route the processed message back into the consumer with
+`msg.action = "commit"` (it still carries `topic`, `partition` and `offset`).
+The second way also works after the message was serialized or copied, where a
+function on `msg` would be lost.
+
+**Crash recovery**: if the client library gives up on the consumer (a
+non-retriable error), the node shows *consumer crashed* and rebuilds the
+consumer with exponential backoff instead of silently staying idle.
 
 ### `kafka-suite-admin`
 
-Performs Kafka cluster administration. Set `msg.action` to one of:
+Performs Kafka cluster administration. Pick a fixed **Action** in the node
+config, or leave it on *from msg.action* and set `msg.action` to one of:
 
 | Action | Required `msg` properties | Description |
 |---|---|---|
 | `listTopics` | — | List all topics. |
-| `createTopic` | `topic`, `config.partitions`, `config.replicationFactor` | Create a topic. |
+| `createTopic` | `topic`, optional `config.partitions`, `config.replicationFactor` | Create a topic. Partitions and replication factor default to the broker defaults (`-1`), which also works on managed clusters that require RF 3. |
 | `deleteTopic` | `topic` (string or array) | Delete one or more topics. |
 | `describeCluster` | — | Get controller, broker list, cluster id. |
 | `listGroups` | — | List consumer groups. |
@@ -269,6 +294,10 @@ Performs Kafka cluster administration. Set `msg.action` to one of:
 | `fetchTopicOffsets` | `topic` | Get partition offsets for a topic. |
 | `resetOffsets` | `groupId`, `topic` | Reset consumer-group offsets. |
 | `deleteGroup` | `groupId` (string or array) | Delete one or more consumer groups. |
+
+`deleteTopic`, `deleteGroup` and `resetOffsets` are rejected unless **Allow
+destructive actions** is checked. New admin nodes start with it off; nodes
+saved before the option existed keep working as before.
 
 ### `kafka-suite-schema-registry` (config node)
 
@@ -337,7 +366,8 @@ environment.
 
 - Service preset: **Redpanda**
 - Fully Kafka-protocol-compatible; same configuration as a self-hosted
-  cluster. SASL/SSL is supported the same way as for Apache Kafka.
+  cluster. SASL/SSL is supported the same way as for Apache Kafka. For a
+  SASL listener without TLS, uncheck **Use TLS** (`SASL_PLAINTEXT`).
 
 ### OAUTHBEARER (OAuth 2.0 / OIDC)
 

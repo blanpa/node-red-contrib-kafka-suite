@@ -65,6 +65,17 @@ describe('HTML editor defaults', function () {
       v('missing-port').should.equal(false);
     });
 
+    it('broker validator accepts a PROTOCOL:// prefix (same rule as the runtime)', function () {
+      const v = opts.defaults.brokers.validate;
+      v('SASL_SSL://kafka.example.com:9094').should.equal(true);
+      v('plaintext://a:9092,b:9092').should.equal(true);
+      v('SASL_SSL://no-port').should.equal(false);
+    });
+
+    it('SASL TLS toggle defaults to on', function () {
+      opts.defaults.saslSsl.value.should.equal(true);
+    });
+
     it('declares credentials block (so secrets do not export with flows)', function () {
       should.exist(opts.credentials);
       opts.credentials.password.type.should.equal('password');
@@ -107,6 +118,11 @@ describe('HTML editor defaults', function () {
       v('').should.equal(true);
       v('_ADD_').should.equal(true);
     });
+
+    it('keeps topic auto-creation on and reads msg.headers by default', function () {
+      opts.defaults.autoCreateTopics.value.should.equal(true);
+      opts.defaults.headersProperty.value.should.equal('headers');
+    });
   });
 
   describe('kafka-suite-consumer', function () {
@@ -131,6 +147,11 @@ describe('HTML editor defaults', function () {
     it('autoCommit defaults to true so newcomers do not lose messages', function () {
       opts.defaults.autoCommit.value.should.equal(true);
     });
+
+    it('headers go to msg.headers and keys are strings by default', function () {
+      opts.defaults.headersProperty.value.should.equal('headers');
+      opts.defaults.keyFormat.value.should.equal('string');
+    });
   });
 
   describe('kafka-suite-admin', function () {
@@ -141,9 +162,13 @@ describe('HTML editor defaults', function () {
       Array.isArray(opts.outputLabels).should.equal(true);
     });
 
-    it('only requires a broker — actions come from msg.action', function () {
+    it('only requires a broker — action defaults to msg.action', function () {
       opts.defaults.broker.required.should.equal(true);
-      Object.keys(opts.defaults).length.should.equal(2); // name + broker
+      opts.defaults.action.value.should.equal('');
+    });
+
+    it('new admin nodes start with destructive actions disabled', function () {
+      opts.defaults.allowDestructive.value.should.equal(false);
     });
   });
 

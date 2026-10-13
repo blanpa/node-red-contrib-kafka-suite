@@ -4,7 +4,9 @@
     color: '#E65100',
     defaults: {
       name: { value: '' },
-      broker: { value: '', type: 'kafka-suite-broker', required: true }
+      broker: { value: '', type: 'kafka-suite-broker', required: true },
+      action: { value: '' },
+      allowDestructive: { value: false }
     },
     inputs: 1,
     outputs: 1,
@@ -12,9 +14,17 @@
     outputLabels: ['result'],
     icon: 'kafka.svg',
     label: function () {
-      return this.name || 'kafka admin';
+      return this.name || this.action || 'kafka admin';
     },
-    paletteLabel: 'kafka admin'
+    paletteLabel: 'kafka admin',
+    oneditprepare: function () {
+      // Configs saved before this option existed allowed every action; keep
+      // that instead of saving the unchecked box as "off". New nodes start
+      // with destructive actions disabled.
+      if (this.allowDestructive === undefined) {
+        $('#node-input-allowDestructive').prop('checked', true);
+      }
+    }
   });
 </script>
 
@@ -27,6 +37,26 @@
     <label for="node-input-broker"><i class="fa fa-server"></i> Broker</label>
     <input type="text" id="node-input-broker">
   </div>
+  <div class="form-row">
+    <label for="node-input-action"><i class="fa fa-wrench"></i> Action</label>
+    <select id="node-input-action">
+      <option value="">from msg.action</option>
+      <option value="listTopics">listTopics</option>
+      <option value="createTopic">createTopic</option>
+      <option value="deleteTopic">deleteTopic</option>
+      <option value="describeCluster">describeCluster</option>
+      <option value="listGroups">listGroups</option>
+      <option value="describeGroup">describeGroup</option>
+      <option value="fetchTopicOffsets">fetchTopicOffsets</option>
+      <option value="resetOffsets">resetOffsets</option>
+      <option value="deleteGroup">deleteGroup</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-allowDestructive"><i class="fa fa-exclamation-triangle"></i> Destructive</label>
+    <input type="checkbox" id="node-input-allowDestructive" style="width:auto;">
+    <span style="font-size:0.9em;color:#aaa;"> Allow destructive actions (deleteTopic, deleteGroup, resetOffsets)</span>
+  </div>
 </script>
 
 <script type="text/html" data-help-name="kafka-suite-admin">
@@ -35,14 +65,19 @@
   <h3>Inputs</h3>
   <dl class="message-properties">
     <dt>action <span class="property-type">string</span></dt>
-    <dd>The admin operation to perform (required). See supported actions below.</dd>
+    <dd>The admin operation to perform, unless a fixed <b>Action</b> is set in the
+    node config. See supported actions below.</dd>
     <dt class="optional">topic <span class="property-type">string | array</span></dt>
     <dd>Target topic name(s) for topic operations.</dd>
     <dt class="optional">groupId <span class="property-type">string | array</span></dt>
     <dd>Consumer group ID(s) for group operations.</dd>
     <dt class="optional">config <span class="property-type">object</span></dt>
-    <dd>Additional configuration (partitions, replicationFactor, configEntries).</dd>
+    <dd>Additional configuration (partitions, replicationFactor, configEntries).
+    Partitions and replication factor default to the broker defaults.</dd>
   </dl>
+  <p>The destructive actions <code>deleteTopic</code>, <code>deleteGroup</code> and
+  <code>resetOffsets</code> are rejected unless <b>Allow destructive actions</b> is
+  checked, so a stray <code>msg.action</code> cannot delete data.</p>
 
   <h3>Supported Actions</h3>
   <ul>

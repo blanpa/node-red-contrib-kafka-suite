@@ -48,6 +48,17 @@ describeIfAvailable('ConfluentAdapter', function () {
       cfg.kafkaJS.requestTimeout.should.equal(30000);
     });
 
+    it('maps retry settings (including retries=0) into the kafkaJS block', function () {
+      const a = new ConfluentAdapter({ brokers: ['b:9092'], retries: 0, initialRetryTime: 100, maxRetryTime: 5000 });
+      a._buildConfig().kafkaJS.retry.should.deepEqual({ maxRetryTime: 5000, initialRetryTime: 100, retries: 0 });
+    });
+
+    it('maps logLevel by name onto the compat layer enum', function () {
+      const levels = require('@confluentinc/kafka-javascript').KafkaJS.logLevel;
+      new ConfluentAdapter({ brokers: ['b:9092'], logLevel: 'debug' })._buildConfig().kafkaJS.logLevel.should.equal(levels.DEBUG);
+      new ConfluentAdapter({ brokers: ['b:9092'], logLevel: 'nothing' })._buildConfig().kafkaJS.logLevel.should.equal(levels.NOTHING);
+    });
+
     it('omits ssl/sasl when not configured', function () {
       const a = new ConfluentAdapter({ brokers: ['b:9092'] });
       const cfg = a._buildConfig();
@@ -265,6 +276,23 @@ describeIfAvailable('ConfluentAdapter', function () {
       await producer.disconnect();
       await producer.disconnect();
     });
+
+    it('connects eagerly when send options are known at creation', async function () {
+      const eager = adapter.createProducer({ allowAutoTopicCreation: false, acks: -1, timeout: 1000, compression: 'none' });
+      await eager.connect();
+      should.exist(eager.producer);
+      mockProducer._connected.should.equal(true);
+      capturedProducerOpts.kafkaJS.acks.should.equal(-1);
+      capturedProducerOpts.kafkaJS.allowAutoTopicCreation.should.equal(false);
+      should(capturedProducerOpts.kafkaJS.compression).be.undefined();
+    });
+
+    it('sends Buffer keys unchanged', async function () {
+      await producer.connect();
+      const bin = Buffer.from([0xff]);
+      await producer.send({ topic: 't', messages: [{ key: bin, value: 'v' }] });
+      sentMessages[0].messages[0].key.should.equal(bin);
+    });
   });
 
   describe('consumer adapter (mocked kafka)', function () {
@@ -306,6 +334,26 @@ describeIfAvailable('ConfluentAdapter', function () {
       capturedConsumerOpts.kafkaJS.autoCommit.should.equal(false);
       capturedConsumerOpts.kafkaJS.autoCommitInterval.should.equal(1000);
       capturedConsumerOpts.kafkaJS.sessionTimeout.should.equal(30000);
+    });
+
+    it('passes partitionsConsumedConcurrently to run()', async function () {
+      await consumer.connect();
+      await consumer.subscribe({ topics: ['t1'] });
+      await consumer.run({ eachMessage: () => {}, partitionsConsumedConcurrently: 3 });
+      runArgs.partitionsConsumedConcurrently.should.equal(3);
+    });
+
+    it('emits rebalancing/ready from the librdkafka rebalance callback', async function () {
+      const events = [];
+      consumer.on('rebalancing', () => events.push('rebalancing'));
+      consumer.on('ready', () => events.push('ready'));
+      await consumer.connect();
+      await consumer.subscribe({ topics: ['t1'] });
+      await consumer.run({ eachMessage: () => {} });
+      const cb = capturedConsumerOpts.rebalance_cb;
+      should(cb({ code: -174 }, [])).be.undefined();
+      cb({ code: -175 }, []);
+      events.should.deepEqual(['rebalancing', 'ready']);
     });
 
     it('subscribes to all pending topics on run()', async function () {

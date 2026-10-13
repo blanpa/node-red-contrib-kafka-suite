@@ -1,5 +1,8 @@
 'use strict';
 
+const { ChildLifecycle } = require('../lib/child-lifecycle');
+const { intOr } = require('../lib/util');
+
 module.exports = function (RED) {
   function KafkaConsumerNode(config) {
     RED.nodes.createNode(this, config);
@@ -10,9 +13,15 @@ module.exports = function (RED) {
     node.groupId = config.groupId || 'node-red-' + node.id;
     node.startOffset = config.startOffset || 'latest';
     node.autoCommit = config.autoCommit !== false;
-    node.autoCommitInterval = parseInt(config.autoCommitInterval) || 5000;
+    node.autoCommitInterval = intOr(config.autoCommitInterval, 5000, 1);
     node.messageFormat = config.messageFormat || 'string';
-    node.concurrency = parseInt(config.concurrency) || 1;
+    node.keyFormat = config.keyFormat || 'string';
+    node.concurrency = intOr(config.concurrency, 1, 1);
+    node.sessionTimeout = intOr(config.sessionTimeout, 30000, 1);
+    node.heartbeatInterval = intOr(config.heartbeatInterval, 3000, 1);
+    // msg property receiving the Kafka headers. Configurable because
+    // msg.headers is also used by the HTTP nodes.
+    node.headersProperty = config.headersProperty || 'headers';
     node.schemaRegistry = config.schemaRegistry || '';
 
     // Broker config node
@@ -33,125 +42,134 @@ module.exports = function (RED) {
       return;
     }
 
-    // Setup consumer
-    node._setupConsumer = async function () {
-      try {
-        const client = node.brokerNode.getClient();
-        if (!client) return false;
+    const runningStatus = () => node.paused
+      ? { fill: 'blue', shape: 'dot', text: 'paused' }
+      : { fill: 'green', shape: 'dot', text: 'consuming' };
 
-        node.consumer = client.createConsumer(node.groupId, {
-          sessionTimeout: 30000,
-          heartbeatInterval: 3000
-        });
-
-        // Consumer events
-        node.consumer.on('rebalancing', () => {
+    node.lifecycle = new ChildLifecycle(node, {
+      label: 'consumer',
+      create: (client) => client.createConsumer(node.groupId, {
+        sessionTimeout: node.sessionTimeout,
+        heartbeatInterval: node.heartbeatInterval
+      }),
+      start: async (consumer) => {
+        consumer.on('rebalancing', () => {
           node.status({ fill: 'yellow', shape: 'ring', text: 'rebalancing...' });
         });
-        node.consumer.on('ready', () => {
-          node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
-        });
+        consumer.on('ready', () => node.status(runningStatus()));
+        consumer.on('crash', (e) => node._onCrash(consumer, e || {}));
 
-        await node.consumer.connect();
-        await node.consumer.subscribe({
+        await consumer.connect();
+        await consumer.subscribe({
           topics: node.topics,
           fromBeginning: node.startOffset === 'earliest'
         });
-
-        await node.consumer.run({
-          eachMessage: async ({ topic, partition, message, heartbeat }) => {
-            try {
-              let value = message.value;
-
-              // Decode based on message format
-              if (node.registryNode && node.registryNode.decode) {
-                value = await node.registryNode.decode(value);
-              } else {
-                value = node._decodeValue(value);
-              }
-
-              // Build headers object. KafkaJS may deliver header values as
-              // Buffer, string, null, or Array (for multi-value headers).
-              const decodeHeader = (v) => {
-                if (v == null) return null;
-                if (Array.isArray(v)) return v.map(decodeHeader);
-                if (Buffer.isBuffer(v)) return v.toString();
-                return String(v);
-              };
-              let headers = {};
-              if (message.headers) {
-                for (const [hKey, hVal] of Object.entries(message.headers)) {
-                  headers[hKey] = decodeHeader(hVal);
-                }
-              }
-
-              // Build output message
-              const msg = {
-                payload: value,
-                topic: topic,
-                key: message.key ? message.key.toString() : null,
-                partition: partition,
-                offset: message.offset,
-                timestamp: message.timestamp,
-                headers: headers,
-                kafka: {
-                  consumerGroup: node.groupId
-                }
-              };
-
-              // Manual commit callback. Use BigInt because Kafka offsets are
-              // 64-bit unsigned integers and can exceed Number.MAX_SAFE_INTEGER
-              // (2^53-1) on busy long-running topics.
-              if (!node.autoCommit) {
-                msg.commit = async function () {
-                  await node.consumer.commitOffsets([{
-                    topic: topic,
-                    partition: partition,
-                    offset: (BigInt(message.offset) + 1n).toString()
-                  }]);
-                };
-              }
-
-              node.send(msg);
-            } catch (err) {
-              node.error('Error processing message: ' + err.message, {
-                topic, partition, offset: message.offset
-              });
-            }
-          },
+        await consumer.run({
+          eachMessage: (args) => node._handleMessage(consumer, args),
           autoCommit: node.autoCommit,
           autoCommitInterval: node.autoCommitInterval,
           partitionsConsumedConcurrently: node.concurrency
         });
-
-        node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
+        // Keep a pause across a restart of the consumer.
+        if (node.paused) consumer.pause(node.topics);
+      },
+      attach: (consumer) => {
+        node.consumer = consumer;
+        node.status(runningStatus());
         node.log('Kafka consumer started for topics: ' + node.topics.join(', '));
-        return true;
-      } catch (err) {
-        // Reset so the next interval tick can retry instead of leaving
-        // the node stuck with a half-initialized consumer.
-        if (node.consumer) {
-          try { await node.consumer.disconnect(); } catch (e) { /* ignore */ }
-          node.consumer = null;
+      },
+      detach: () => { node.consumer = null; }
+    });
+
+    // Called by the broker node once it is (re)connected.
+    node._onBrokerConnected = () => node.lifecycle.start();
+
+    /**
+     * The client library reports a consumer crash. With restart=true it
+     * recovers on its own; otherwise the consumer is dead and we rebuild it
+     * (with backoff) instead of showing "consuming" for a stopped consumer.
+     */
+    node._onCrash = function (consumer, { error, restart }) {
+      if (node.lifecycle.resource !== consumer) return;
+      const reason = error && error.message ? error.message : 'unknown error';
+      if (restart) {
+        node.status({ fill: 'yellow', shape: 'ring', text: 'restarting...' });
+        node.warn('Kafka consumer crashed, restarting: ' + reason);
+        return;
+      }
+      node.status({ fill: 'red', shape: 'ring', text: 'consumer crashed' });
+      node.error('Kafka consumer crashed: ' + reason + ' (restarting)');
+      node.lifecycle.restart();
+    };
+
+    // Build headers object. KafkaJS may deliver header values as
+    // Buffer, string, null, or Array (for multi-value headers).
+    const decodeHeader = (v) => {
+      if (v == null) return null;
+      if (Array.isArray(v)) return v.map(decodeHeader);
+      if (Buffer.isBuffer(v)) return v.toString();
+      return String(v);
+    };
+
+    node._handleMessage = async function (consumer, { topic, partition, message }) {
+      try {
+        let value = message.value;
+
+        // Decode based on message format
+        if (node.registryNode && node.registryNode.decode) {
+          value = await node.registryNode.decode(value);
+        } else {
+          value = node._decodeValue(value);
         }
-        node.status({ fill: 'red', shape: 'ring', text: 'consumer error' });
-        node.error('Failed to start consumer: ' + err.message);
-        return false;
+
+        const headers = {};
+        if (message.headers) {
+          for (const [hKey, hVal] of Object.entries(message.headers)) {
+            headers[hKey] = decodeHeader(hVal);
+          }
+        }
+
+        let key = null;
+        if (message.key != null) {
+          key = node.keyFormat === 'raw' ? message.key : message.key.toString();
+        }
+
+        // Build output message
+        const msg = {
+          payload: value,
+          topic: topic,
+          key: key,
+          partition: partition,
+          offset: message.offset,
+          timestamp: message.timestamp,
+          kafka: {
+            consumerGroup: node.groupId
+          }
+        };
+        RED.util.setMessageProperty(msg, node.headersProperty, headers, true);
+
+        // Manual commit callback. Use BigInt because Kafka offsets are
+        // 64-bit unsigned integers and can exceed Number.MAX_SAFE_INTEGER
+        // (2^53-1) on busy long-running topics.
+        if (!node.autoCommit) {
+          msg.commit = async function () {
+            await consumer.commitOffsets([nextOffset(topic, partition, message.offset)]);
+          };
+        }
+
+        node.send(msg);
+      } catch (err) {
+        node.error('Error processing message: ' + err.message, {
+          topic, partition, offset: message.offset
+        });
       }
     };
 
     // Register with broker
     node.brokerNode.register(node);
 
-    // Poll until broker is connected and consumer setup succeeds.
-    const checkInterval = setInterval(async () => {
-      if (node.brokerNode.connected && !node.consumer) {
-        await node._setupConsumer();
-      }
-    }, 500);
-
-    // Handle control messages (pause/resume)
-    node.on('input', function (msg, send, done) {
+    // Handle control messages: pause, resume, commit
+    node.on('input', async function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (err) { if (err) node.error(err, msg); };
 
@@ -165,11 +183,18 @@ module.exports = function (RED) {
         if (action === 'pause' && !node.paused) {
           node.consumer.pause(node.topics);
           node.paused = true;
-          node.status({ fill: 'blue', shape: 'dot', text: 'paused' });
+          node.status(runningStatus());
         } else if (action === 'resume' && node.paused) {
           node.consumer.resume(node.topics);
           node.paused = false;
-          node.status({ fill: 'green', shape: 'dot', text: 'consuming' });
+          node.status(runningStatus());
+        } else if (action === 'commit') {
+          // Commit a processed message by feeding it back with
+          // msg.action = 'commit' (it still carries topic/partition/offset).
+          if (msg.topic == null || msg.partition == null || msg.offset == null) {
+            throw new Error('commit requires msg.topic, msg.partition and msg.offset');
+          }
+          await node.consumer.commitOffsets([nextOffset(msg.topic, msg.partition, msg.offset)]);
         }
         done();
       } catch (err) {
@@ -198,24 +223,19 @@ module.exports = function (RED) {
 
     // Close handler
     node.on('close', function (removed, done) {
-      clearInterval(checkInterval);
-      const cleanup = async () => {
-        if (node.consumer) {
-          try {
-            await node.consumer.disconnect();
-          } catch (err) {
-            node.warn('Error disconnecting consumer: ' + err.message);
-          }
-          node.consumer = null;
-        }
-        if (node.brokerNode) {
-          node.brokerNode.deregister(node, done, removed);
-        } else {
-          done();
-        }
-      };
-      cleanup();
+      node.lifecycle.stop().then(() => {
+        node.brokerNode.deregister(node, done, removed);
+      });
     });
+  }
+
+  // Kafka commits the offset of the NEXT message to read.
+  function nextOffset(topic, partition, offset) {
+    return {
+      topic: topic,
+      partition: Number(partition),
+      offset: (BigInt(offset) + 1n).toString()
+    };
   }
 
   RED.nodes.registerType('kafka-suite-consumer', KafkaConsumerNode);
