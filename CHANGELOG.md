@@ -4,6 +4,61 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`PROTOCOL://host:port` broker addresses now work.** The runtime accepted
+  them but passed them unchanged to the client, which split on `:` and tried
+  to connect to host `SASL_SSL`. The prefix is now stripped, and the editor
+  validation accepts the same forms as the runtime.
+- **SASL without TLS (`SASL_PLAINTEXT`) is configurable.** Every SASL
+  mechanism forced TLS on. New **Use TLS** checkbox (default on, so existing
+  configs are unchanged); a custom CA cert can now be set for SASL+TLS too.
+- **Dead consumers are detected.** The broker listened for a `disconnected`
+  event that only fired on our own shutdown, so a lost connection was never
+  noticed. kafkajs consumer crashes (`restart: false`) are now forwarded and
+  the consumer is rebuilt with backoff instead of showing "consuming" while
+  stopped.
+- **Confluent backend:** consumer concurrency (`partitionsConsumedConcurrently`)
+  was ignored; retry settings and log level were not mapped; consumer
+  `rebalancing`/`ready` status now works via librdkafka's rebalance callback;
+  the producer connects at startup so connection errors surface immediately.
+- **`0` values are kept.** `retries: 0` became 5 and `msg.key = 0` became
+  `null` because of `parseInt(x) || default` / `||` fallbacks.
+- **Binary keys** (Buffer) are no longer stringified by either adapter.
+
+### Changed
+
+- **No more 500 ms polling and log flooding.** Child nodes start when the
+  broker reports a connection instead of polling every 500 ms, and failed
+  setups (missing topic, ACL denied, ...) retry with exponential backoff —
+  previously each failure logged an error twice per second per node. Broker
+  reconnects use real exponential backoff (`Init Retry` doubling up to
+  `Max Retry`) instead of a fixed 300 ms.
+- **Schema auto-registration is cached** per subject/type/definition, so
+  `msg.schemaDefinition` on every message no longer costs an HTTP round-trip.
+  The producer encodes with the id returned by the registration.
+- **Admin: destructive actions need opt-in.** `deleteTopic`, `deleteGroup` and
+  `resetOffsets` require the new **Allow destructive actions** option. New
+  nodes start with it off; existing nodes keep their behavior. A fixed
+  **Action** can be chosen in the node config.
+- **Admin: `createTopic` defaults to the broker's partition count and
+  replication factor** (`-1`) instead of `1`/`1`, which failed on managed
+  clusters requiring RF 3. Explicit values are still honored.
+
+### Added
+
+- Producer **Headers from** / consumer **Headers to**: configurable `msg`
+  property for Kafka headers (default `headers`), to avoid clashing with the
+  HTTP nodes' `msg.headers`. Producer header values are coerced to valid
+  Kafka header types.
+- Consumer **commit via input**: send a processed message back with
+  `msg.action = "commit"`. Works where `msg.commit()` (a function) is lost.
+- Consumer **Key format** (`string` / `raw`), **Session Timeout** and
+  **Heartbeat** settings. A pause now survives a consumer restart.
+- Producer **Auto-create** option (default on) for `allowAutoTopicCreation`.
+
 ## [0.0.5] — 2026-08-26
 
 > Note: `0.0.4` was tagged but never reached npm (latest published was `0.0.3`). This release carries the 0.0.4 changes as well.

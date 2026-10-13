@@ -126,11 +126,12 @@ describe('kafka-suite-consumer node', function () {
 
     function setupWithMock(c, b, mockConsumer) {
       // Make broker.getClient() return a fake client whose createConsumer
-      // returns our mock; then call _setupConsumer to wire it through.
+      // returns our mock; then start the lifecycle to wire it through.
+      b.connected = true;
       b.client = {
         createConsumer: function () { return mockConsumer; }
       };
-      return c._setupConsumer();
+      return c.lifecycle.start();
     }
 
     it('emits a Node-RED message per kafka message with headers/key/offset', function (done) {
@@ -268,6 +269,152 @@ describe('kafka-suite-consumer node', function () {
             },
             heartbeat: async () => {}
           });
+        });
+      });
+    });
+  });
+
+  describe('lifecycle, crash handling and options (mocked consumer)', function () {
+    function makeMock() {
+      const mock = {
+        handlers: {},
+        on: function (ev, fn) { mock.handlers[ev] = fn; },
+        connect: async function () {},
+        subscribe: async function () {},
+        run: async function (args) { mock._runArgs = args; },
+        commitOffsets: async function (offs) { mock._committed = offs; },
+        pause: function (t) { mock._paused = t; },
+        resume: function () {},
+        disconnect: async function () { mock._disconnected = true; }
+      };
+      return mock;
+    }
+
+    function start(c, b, mock, onCreate) {
+      b.connected = true;
+      b.client = {
+        createConsumer: function (groupId, opts) {
+          if (onCreate) onCreate(groupId, opts);
+          return mock;
+        }
+      };
+      return c.lifecycle.start();
+    }
+
+    function feed(mock, message) {
+      return mock._runArgs.eachMessage({
+        topic: 'topic-a', partition: 0,
+        message: Object.assign({ value: Buffer.from('x'), key: null, offset: '5', timestamp: '0', headers: {} }, message),
+        heartbeat: async () => {}
+      });
+    }
+
+    it('passes sessionTimeout/heartbeatInterval/concurrency through', function (done) {
+      loadFlow({ sessionTimeout: '45000', heartbeatInterval: '5000', concurrency: '4' }, (c, b) => {
+        const mock = makeMock();
+        let opts = null;
+        start(c, b, mock, (g, o) => { opts = o; }).then(() => {
+          opts.should.deepEqual({ sessionTimeout: 45000, heartbeatInterval: 5000 });
+          mock._runArgs.partitionsConsumedConcurrently.should.equal(4);
+          c.consumer.should.equal(mock);
+          done();
+        });
+      });
+    });
+
+    it('a crash without restart rebuilds the consumer', function (done) {
+      loadFlow({}, (c, b) => {
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          let restarted = false;
+          c.lifecycle.restart = function () { restarted = true; return Promise.resolve(); };
+          c.error = function () {};
+          mock.handlers.crash({ error: new Error('boom'), restart: false });
+          restarted.should.equal(true);
+          done();
+        });
+      });
+    });
+
+    it('a crash that kafkajs restarts itself is only reported', function (done) {
+      loadFlow({}, (c, b) => {
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          let restarted = false;
+          c.lifecycle.restart = function () { restarted = true; return Promise.resolve(); };
+          c.warn = function () {};
+          mock.handlers.crash({ error: new Error('retriable'), restart: true });
+          restarted.should.equal(false);
+          done();
+        });
+      });
+    });
+
+    it('re-applies a pause when the consumer is rebuilt', function (done) {
+      loadFlow({}, (c, b) => {
+        c.paused = true;
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          mock._paused.should.deepEqual(['topic-a']);
+          done();
+        });
+      });
+    });
+
+    it('writes headers to a custom property and leaves msg.headers alone', function (done) {
+      loadFlow({ headersProperty: 'kafkaHeaders' }, (c, b, h) => {
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          h.on('input', function (msg) {
+            msg.kafkaHeaders.should.deepEqual({ 'x-id': '1' });
+            should(msg.headers).be.undefined();
+            done();
+          });
+          feed(mock, { headers: { 'x-id': Buffer.from('1') } });
+        });
+      });
+    });
+
+    it('keyFormat=raw keeps binary keys as Buffer', function (done) {
+      loadFlow({ keyFormat: 'raw' }, (c, b, h) => {
+        const mock = makeMock();
+        const key = Buffer.from([0xff, 0x00, 0x01]);
+        start(c, b, mock).then(() => {
+          h.on('input', function (msg) {
+            Buffer.isBuffer(msg.key).should.equal(true);
+            msg.key.equals(key).should.equal(true);
+            done();
+          });
+          feed(mock, { key });
+        });
+      });
+    });
+
+    it('commit action commits offset+1 of the message fed back in', function (done) {
+      loadFlow({ autoCommit: false }, (c, b) => {
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          c.receive({ action: 'commit', topic: 'topic-a', partition: 3, offset: '9007199254740993' });
+          setTimeout(() => {
+            mock._committed.should.deepEqual([{ topic: 'topic-a', partition: 3, offset: '9007199254740994' }]);
+            done();
+          }, 50);
+        });
+      });
+    });
+
+    it('commit action without coordinates reports an error', function (done) {
+      loadFlow({ autoCommit: false }, (c, b) => {
+        const mock = makeMock();
+        start(c, b, mock).then(() => {
+          let errored = null;
+          c.error = function (e) { errored = e; };
+          c.receive({ action: 'commit', topic: 'topic-a' });
+          setTimeout(() => {
+            String(errored).should.match(/requires msg.topic, msg.partition and msg.offset/);
+            should(mock._committed).be.undefined();
+            done();
+          }, 50);
         });
       });
     });

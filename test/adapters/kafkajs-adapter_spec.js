@@ -51,6 +51,11 @@ describe('KafkaJSAdapter', function () {
       cfg.retry.maxRetryTime.should.equal(10000);
     });
 
+    it('keeps retries=0 instead of replacing it with the default', function () {
+      const a = new KafkaJSAdapter({ brokers: ['b:9092'], retries: 0 });
+      a._buildConfig().retry.retries.should.equal(0);
+    });
+
     it('omits ssl/sasl when not configured', function () {
       const a = new KafkaJSAdapter({ brokers: ['b:9092'] });
       const cfg = a._buildConfig();
@@ -192,6 +197,48 @@ describe('KafkaJSAdapter', function () {
 
     it('_serializeValue: numbers → string', function () {
       producer._serializeValue(42).should.equal('42');
+    });
+  });
+
+  describe('mocked kafkajs client', function () {
+    function adapterWith(fakeKafka) {
+      const a = new KafkaJSAdapter({ brokers: ['localhost:9092'] });
+      a.kafka = fakeKafka;
+      return a;
+    }
+
+    it('producer sends Buffer keys unchanged and stringifies the rest', async function () {
+      let sent = null;
+      const a = adapterWith({ producer: () => ({ send: async (args) => { sent = args; return []; } }) });
+      const p = a.createProducer();
+      const bin = Buffer.from([0xff, 0x00]);
+      await p.send({ topic: 't', messages: [{ key: bin, value: 'a' }, { key: 7, value: 'b' }, { value: 'c' }] });
+      sent.messages[0].key.should.equal(bin);
+      sent.messages[1].key.should.equal('7');
+      should(sent.messages[2].key).be.null();
+    });
+
+    it('consumer forwards CRASH as a crash event with its payload', function () {
+      const listeners = {};
+      const events = { CONNECT: 'c', DISCONNECT: 'd', GROUP_JOIN: 'g', REBALANCING: 'r', STOP: 's', CRASH: 'x' };
+      const a = adapterWith({ consumer: () => ({ events, on: (ev, fn) => { listeners[ev] = fn; } }) });
+      const c = a.createConsumer('g1');
+      let crash = null;
+      c.on('crash', (e) => { crash = e; });
+      const error = new Error('boom');
+      listeners.x({ type: 'consumer.crash', payload: { error, groupId: 'g1', restart: false } });
+      crash.error.should.equal(error);
+      crash.restart.should.equal(false);
+    });
+
+    it('createTopics defaults partitions/replication to the broker defaults', async function () {
+      let args = null;
+      const a = adapterWith({ admin: () => ({ createTopics: async (x) => { args = x; return true; } }) });
+      await a.createAdmin().createTopics([{ topic: 't' }, { topic: 'u', numPartitions: 3, replicationFactor: 2 }]);
+      args.topics[0].numPartitions.should.equal(-1);
+      args.topics[0].replicationFactor.should.equal(-1);
+      args.topics[1].numPartitions.should.equal(3);
+      args.topics[1].replicationFactor.should.equal(2);
     });
   });
 });

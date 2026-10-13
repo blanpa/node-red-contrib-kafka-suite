@@ -9,7 +9,8 @@
         validate: function (v) {
           if (!v) return false;
           return v.split(',').every(function (b) {
-            return /^[A-Za-z0-9.-]+:\d{1,5}$/.test(b.trim());
+            // host:port, optionally prefixed with PROTOCOL:// (stripped at runtime)
+            return /^(?:[A-Za-z_]+:\/\/)?[A-Za-z0-9.-]+:\d{1,5}$/.test(b.trim());
           });
         }
       },
@@ -17,6 +18,7 @@
       backend: { value: 'kafkajs' },
       servicePreset: { value: 'self-hosted' },
       authType: { value: 'none' },
+      saslSsl: { value: true },
       logLevel: { value: 'warn' },
       connectionTimeout: { value: 3000, validate: RED.validators.number() },
       requestTimeout: { value: 30000, validate: RED.validators.number() },
@@ -62,19 +64,29 @@
         $('.kafka-oauth-password-fields').toggle(grant === 'password');
       }
 
+      // Configs saved before the TLS toggle existed always used TLS for SASL;
+      // keep that instead of saving the unchecked box as "off".
+      if (this.saslSsl === undefined) {
+        $('#node-config-input-saslSsl').prop('checked', true);
+      }
+
       function updateAuthFields() {
         var authType = $('#node-config-input-authType').val();
+        var saslTls = $('#node-config-input-saslSsl').is(':checked');
         $('.kafka-sasl-fields').hide();
         $('.kafka-oauth-fields').hide();
+        $('.kafka-sasl-tls-row').hide();
         $('.kafka-ssl-fields').hide();
         $('.kafka-ssl-cert-fields').hide();
 
         if (authType === 'sasl-plain' || authType === 'sasl-scram-256' || authType === 'sasl-scram-512') {
           $('.kafka-sasl-fields').show();
-          $('.kafka-ssl-fields').show();
+          $('.kafka-sasl-tls-row').show();
+          $('.kafka-ssl-fields').toggle(saslTls);
         } else if (authType === 'sasl-oauthbearer') {
           $('.kafka-oauth-fields').show();
-          $('.kafka-ssl-fields').show();
+          $('.kafka-sasl-tls-row').show();
+          $('.kafka-ssl-fields').toggle(saslTls);
           updateOAuthGrantFields();
         } else if (authType === 'ssl') {
           $('.kafka-ssl-fields').show();
@@ -94,6 +106,7 @@
       });
 
       $('#node-config-input-authType').on('change', updateAuthFields);
+      $('#node-config-input-saslSsl').on('change', updateAuthFields);
 
       // Show/hide advanced section
       $('#kafka-advanced-toggle').on('click', function (e) {
@@ -132,7 +145,7 @@
 
   <div class="form-row">
     <label for="node-config-input-brokers"><i class="fa fa-server"></i> Brokers</label>
-    <input type="text" id="node-config-input-brokers" placeholder="broker1:9092,broker2:9092">
+    <input type="text" id="node-config-input-brokers" placeholder="broker1:9092,broker2:9092 (PROTOCOL:// prefix allowed)">
   </div>
 
   <div class="form-row">
@@ -217,19 +230,25 @@
     </div>
   </div>
 
+  <div class="form-row kafka-sasl-tls-row" style="display:none;">
+    <label for="node-config-input-saslSsl"><i class="fa fa-lock"></i> Use TLS</label>
+    <input type="checkbox" id="node-config-input-saslSsl" style="width:auto;">
+    <span style="font-size:0.9em;color:#aaa;"> SASL_SSL (uncheck for SASL_PLAINTEXT)</span>
+  </div>
+
   <div class="kafka-ssl-fields" style="display:none;">
     <div class="form-row">
       <label for="node-config-input-sslRejectUnauthorized"><i class="fa fa-shield"></i> Verify SSL</label>
       <input type="checkbox" id="node-config-input-sslRejectUnauthorized" style="width:auto;">
       <span style="font-size:0.9em;color:#aaa;"> Reject unauthorized certificates</span>
     </div>
+    <div class="form-row">
+      <label for="node-config-input-sslCa"><i class="fa fa-certificate"></i> CA Cert</label>
+      <textarea id="node-config-input-sslCa" rows="3" placeholder="optional: -----BEGIN CERTIFICATE-----" style="width:70%;"></textarea>
+    </div>
   </div>
 
   <div class="kafka-ssl-cert-fields" style="display:none;">
-    <div class="form-row">
-      <label for="node-config-input-sslCa"><i class="fa fa-certificate"></i> CA Cert</label>
-      <textarea id="node-config-input-sslCa" rows="3" placeholder="-----BEGIN CERTIFICATE-----" style="width:70%;"></textarea>
-    </div>
     <div class="form-row">
       <label for="node-config-input-sslCert"><i class="fa fa-certificate"></i> Client Cert</label>
       <textarea id="node-config-input-sslCert" rows="3" placeholder="-----BEGIN CERTIFICATE-----" style="width:70%;"></textarea>
@@ -310,6 +329,18 @@
   <h3>Authentication</h3>
   <p>Supports SASL/PLAIN, SCRAM-SHA-256/512, OAUTHBEARER, and mutual TLS (mTLS).
   Credentials are stored securely and never exported with flows.</p>
+  <p>SASL mechanisms use TLS (<code>SASL_SSL</code>) by default. Uncheck
+  <b>Use TLS</b> for listeners that speak <code>SASL_PLAINTEXT</code>. A custom
+  <b>CA Cert</b> can be set whenever TLS is on (e.g. for a self-signed cluster CA).</p>
+
+  <h3>Brokers</h3>
+  <p>Comma-separated <code>host:port</code> list. A <code>PROTOCOL://</code> prefix
+  (e.g. <code>SASL_SSL://kafka:9094</code>) is accepted and stripped; the security
+  protocol comes from the Auth settings.</p>
+
+  <h3>Reconnect</h3>
+  <p>If the cluster cannot be reached, connecting is retried with exponential
+  backoff starting at <b>Init Retry</b> and capped at <b>Max Retry</b>.</p>
 
   <h3>OAUTHBEARER (OAuth 2.0)</h3>
   <p>Acquires a bearer token from an OAuth 2.0 token endpoint, equivalent to the

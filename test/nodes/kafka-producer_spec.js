@@ -54,13 +54,18 @@ describe('kafka-suite-producer node', function () {
 
   it('returns error when input arrives before producer is connected', function (done) {
     loadFlow({}, (p) => {
-      p.receive({ payload: 'x' });
-      // node.error is invoked; we wait a tick
-      setTimeout(() => {
-        // producer is null => error path
-        should(p.producer).be.null();
-        done();
-      }, 50);
+      // Make sure no producer gets attached, even if a Kafka happens to run
+      // on localhost:9092 while the tests run.
+      p.lifecycle.stop().then(() => {
+        let errored = null;
+        p.error = function (e) { errored = e; };
+        p.receive({ payload: 'x' });
+        setTimeout(() => {
+          should(p.producer).be.null();
+          String(errored).should.match(/Producer not connected/);
+          done();
+        }, 50);
+      });
     });
   });
 
@@ -394,6 +399,79 @@ describe('kafka-suite-producer node', function () {
         String(errored.message || errored).should.match(/SR-403/);
         done();
       }, 50);
+    });
+  });
+
+  it('reads headers from a custom property and ignores msg.headers', function (done) {
+    loadFlow({ headersProperty: 'kafkaHeaders' }, (p, b, h) => {
+      let sent = null;
+      p.producer = { send: async function (args) { sent = args; return []; } };
+      h.on('input', function () {
+        sent.messages[0].headers.should.deepEqual({ 'x-id': '7' });
+        done();
+      });
+      p.receive({ payload: 'x', headers: { host: 'example.com' }, kafkaHeaders: { 'x-id': 7 } });
+    });
+  });
+
+  it('coerces header values Kafka cannot encode', function (done) {
+    loadFlow({}, (p, b, h) => {
+      let sent = null;
+      p.producer = { send: async function (args) { sent = args; return []; } };
+      h.on('input', function () {
+        sent.messages[0].headers.should.deepEqual({ n: '1', o: '{"a":1}' });
+        done();
+      });
+      p.receive({ payload: 'x', headers: { n: 1, o: { a: 1 }, gone: null } });
+    });
+  });
+
+  it('keeps msg.key = 0 instead of dropping it', function (done) {
+    loadFlow({}, (p, b, h) => {
+      let sent = null;
+      p.producer = { send: async function (args) { sent = args; return []; } };
+      h.on('input', function () {
+        sent.messages[0].key.should.equal(0);
+        done();
+      });
+      p.receive({ payload: 'x', key: 0 });
+    });
+  });
+
+  it('encodes with the schema id returned by auto-registration', function (done) {
+    loadFlow({}, (p, b, h) => {
+      let encodedWith = null;
+      p.registryNode = {
+        autoRegister: true,
+        registerSchema: async function () { return 42; },
+        encode: async function (subject, payload, schemaId) { encodedWith = schemaId; return Buffer.from([0]); }
+      };
+      p.producer = { send: async function () { return []; } };
+      h.on('input', function () {
+        encodedWith.should.equal(42);
+        done();
+      });
+      p.receive({ payload: { a: 1 }, schemaDefinition: { type: 'record', name: 'X', fields: [] } });
+    });
+  });
+
+  it('creates the producer with the auto-create and send settings', function (done) {
+    loadFlow({ autoCreateTopics: false, acks: '1', compression: 'gzip' }, (p, b) => {
+      let opts = null;
+      b.connected = true;
+      b.client = {
+        createProducer: function (o) {
+          opts = o;
+          return { connect: async () => {}, disconnect: async () => {} };
+        }
+      };
+      p.lifecycle.start().then(() => {
+        opts.allowAutoTopicCreation.should.equal(false);
+        opts.acks.should.equal(1);
+        opts.compression.should.equal('gzip');
+        should.exist(p.producer);
+        done();
+      });
     });
   });
 

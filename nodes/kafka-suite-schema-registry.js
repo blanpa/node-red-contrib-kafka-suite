@@ -1,5 +1,7 @@
 'use strict';
 
+const { intOr } = require('../lib/util');
+
 module.exports = function (RED) {
   function KafkaSchemaRegistryNode(config) {
     RED.nodes.createNode(this, config);
@@ -7,12 +9,17 @@ module.exports = function (RED) {
 
     node.registryUrl = config.registryUrl || 'http://localhost:8081';
     node.schemaType = config.schemaType || 'AVRO';
-    node.cacheTTL = parseInt(config.cacheTTL) || 300000; // 5 minutes
+    node.cacheTTL = intOr(config.cacheTTL, 300000, 0); // 5 minutes
     node.autoRegister = config.autoRegister || false;
 
     node.registry = null;
     node.libraryAvailable = false;
     node._schemaCache = {};
+    // subject + type + schema text -> schema id. A registered schema's id
+    // never changes, so repeated registerSchema() calls with the same
+    // definition (e.g. msg.schemaDefinition on every message) skip the
+    // HTTP round-trip.
+    node._registeredCache = new Map();
 
     // Try to load schema registry library
     node._initRegistry = function () {
@@ -44,11 +51,15 @@ module.exports = function (RED) {
     node._initRegistry();
 
     /**
-     * Encode a payload using the schema registry
+     * Encode a payload using the schema registry. Uses the given schema id,
+     * or the latest schema registered for the subject.
      */
-    node.encode = async function (subject, payload) {
+    node.encode = async function (subject, payload, schemaIdOverride) {
       if (!node.registry) {
         throw new Error('Schema Registry not initialized');
+      }
+      if (schemaIdOverride != null) {
+        return await node.registry.encode(schemaIdOverride, payload);
       }
 
       // Get or cache schema ID
@@ -96,11 +107,17 @@ module.exports = function (RED) {
         throw new Error('Schema Registry not initialized');
       }
       const schemaType = (type || node.schemaType || 'AVRO').toUpperCase();
+      const schemaText = typeof schema === 'string' ? schema : JSON.stringify(schema);
+      const cacheKey = subject + '\0' + schemaType + '\0' + schemaText;
+      if (node._registeredCache.has(cacheKey)) {
+        return node._registeredCache.get(cacheKey);
+      }
       const payload = {
         type: node.SchemaType[schemaType],
-        schema: typeof schema === 'string' ? schema : JSON.stringify(schema)
+        schema: schemaText
       };
       const { id } = await node.registry.register(payload, { subject });
+      node._registeredCache.set(cacheKey, id);
       // Prime the cache so the very next encode() doesn't re-fetch
       node._schemaCache[subject] = { id, _cachedAt: Date.now() };
       return id;
@@ -109,6 +126,7 @@ module.exports = function (RED) {
     node.on('close', function (done) {
       node.registry = null;
       node._schemaCache = {};
+      node._registeredCache.clear();
       done();
     });
   }

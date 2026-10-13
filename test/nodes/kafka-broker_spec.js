@@ -2,7 +2,9 @@
 
 const should = require('should');
 const helper = require('node-red-node-test-helper');
+const sinon = require('sinon');
 const brokerNode = require('../../nodes/kafka-suite-broker.js');
+const KafkaJSAdapter = require('../../lib/adapters/kafkajs-adapter');
 
 helper.init(require.resolve('node-red'));
 
@@ -177,6 +179,8 @@ describe('kafka-suite-broker node', function () {
       helper.load(brokerNode, flow, function () {
         const n = helper.getNode('b1');
         n.invalidBrokers.should.deepEqual([]);
+        // The prefix is stripped: kafkajs splits seed brokers on ':'.
+        n.brokers.should.deepEqual(['kafka1.example.com:9092', 'broker:9094', '127.0.0.1:9092']);
         done();
       });
     });
@@ -222,27 +226,47 @@ describe('kafka-suite-broker node', function () {
       });
     });
 
-    it('_handleClientLost schedules reconnect and resets state', function (done) {
+    it('register on an already connected broker starts the child right away', function (done) {
+      const flow = [{ id: 'b1', type: 'kafka-suite-broker', brokers: 'localhost:9092' }];
+      helper.load(brokerNode, flow, function () {
+        const n = helper.getNode('b1');
+        n.connected = true;
+        let started = false;
+        n.register({ id: 'c', status: () => {}, _onBrokerConnected: () => { started = true; } });
+        started.should.equal(true);
+        done();
+      });
+    });
+
+    it('_scheduleReconnect backs off exponentially up to maxRetryTime', function (done) {
       const flow = [{
         id: 'b1', type: 'kafka-suite-broker',
-        brokers: 'localhost:9092', initialRetryTime: '50'
+        brokers: 'localhost:9092', initialRetryTime: '20', maxRetryTime: '70'
       }];
       helper.load(brokerNode, flow, function () {
         const n = helper.getNode('b1');
-        // Simulate a successful connection
-        n.connected = true;
-        n.client = { disconnect: async () => {}, on: () => {} };
-        // Keep at least one user so the reconnect will fire
+        n.doConnect = async function () {};
+        const delays = [n._scheduleReconnect(), n._scheduleReconnect(), n._scheduleReconnect(), n._scheduleReconnect()];
+        delays.should.deepEqual([20, 40, 70, 70]);
+        done();
+      });
+    });
+
+    it('reconnect timer calls doConnect while users remain', function (done) {
+      const flow = [{
+        id: 'b1', type: 'kafka-suite-broker',
+        brokers: 'localhost:9092', initialRetryTime: '30'
+      }];
+      helper.load(brokerNode, flow, function () {
+        const n = helper.getNode('b1');
         n.users['fake'] = { id: 'fake', status: () => {} };
-        let reconnectAttempted = false;
-        n.doConnect = async function () { reconnectAttempted = true; };
-        n._handleClientLost('test');
-        n.connected.should.equal(false);
-        should(n.client).be.null();
+        let attempts = 0;
+        n.doConnect = async function () { attempts++; };
+        n._scheduleReconnect();
         setTimeout(() => {
-          reconnectAttempted.should.equal(true);
+          attempts.should.equal(1);
           done();
-        }, 120);
+        }, 80);
       });
     });
 
@@ -253,17 +277,113 @@ describe('kafka-suite-broker node', function () {
       }];
       helper.load(brokerNode, flow, function () {
         const n = helper.getNode('b1');
-        n.connected = true;
-        n.client = { disconnect: async () => {}, on: () => {} };
-        // No users registered
         let attempts = 0;
         n.doConnect = async function () { attempts++; };
-        n._handleClientLost('test');
+        n._scheduleReconnect();
         setTimeout(() => {
           attempts.should.equal(0);
           done();
         }, 80);
       });
+    });
+  });
+
+  describe('doConnect (stubbed adapter)', function () {
+    let connectStub;
+    beforeEach(function () { connectStub = sinon.stub(KafkaJSAdapter.prototype, 'connect'); });
+    afterEach(function () { connectStub.restore(); });
+
+    function load(cb) {
+      const flow = [{ id: 'b1', type: 'kafka-suite-broker', brokers: 'localhost:9092', initialRetryTime: '1000' }];
+      helper.load(brokerNode, flow, function () {
+        const n = helper.getNode('b1');
+        // The flow load did not register anything, so no connect ran yet.
+        cb(n);
+      });
+    }
+
+    it('notifies registered children once connected', function (done) {
+      connectStub.resolves();
+      load((n) => {
+        let started = 0;
+        n.users['c'] = { id: 'c', status: () => {}, _onBrokerConnected: () => { started++; } };
+        n.doConnect().then(() => {
+          n.connected.should.equal(true);
+          should.exist(n.client);
+          started.should.equal(1);
+          done();
+        });
+      });
+    });
+
+    it('schedules a reconnect with backoff after a failed connect', function (done) {
+      connectStub.rejects(new Error('ECONNREFUSED'));
+      load((n) => {
+        n.users['c'] = { id: 'c', status: () => {} };
+        let logged = null;
+        n.error = function (e) { logged = e; };
+        n.doConnect().then(() => {
+          n.connected.should.equal(false);
+          should(n.client).be.null();
+          should.exist(n._reconnectTimer);
+          String(logged).should.match(/ECONNREFUSED.*retrying in 1s/);
+          done();
+        });
+      });
+    });
+
+    it('drops a connect that finishes after doDisconnect()', function (done) {
+      let release;
+      connectStub.callsFake(() => new Promise(resolve => { release = resolve; }));
+      load((n) => {
+        const pending = n.doConnect();
+        n.doDisconnect().then(() => {
+          release();
+          return pending;
+        }).then(() => {
+          n.connected.should.equal(false);
+          should(n.client).be.null();
+          done();
+        });
+      });
+    });
+  });
+
+  describe('SASL TLS toggle', function () {
+    it('saslSsl=false yields SASL_PLAINTEXT (sasl without ssl)', function (done) {
+      const flow = [{
+        id: 'b1', type: 'kafka-suite-broker',
+        brokers: 'b:9092', authType: 'sasl-scram-256', saslSsl: false
+      }];
+      const creds = { b1: { username: 'u', password: 'p' } };
+      helper.load(brokerNode, flow, creds, function () {
+        const cfg = helper.getNode('b1').getAdapterConfig();
+        should(cfg.ssl).be.undefined();
+        cfg.sasl.mechanism.should.equal('scram-sha-256');
+        done();
+      });
+    });
+
+    it('missing saslSsl (older configs) keeps TLS on and passes a custom CA', function (done) {
+      const flow = [{
+        id: 'b1', type: 'kafka-suite-broker',
+        brokers: 'b:9092', authType: 'sasl-plain'
+      }];
+      const creds = { b1: { username: 'u', password: 'p', sslCa: 'CA' } };
+      helper.load(brokerNode, flow, creds, function () {
+        const cfg = helper.getNode('b1').getAdapterConfig();
+        cfg.ssl.should.equal(true);
+        cfg.sslCa.should.equal('CA');
+        done();
+      });
+    });
+  });
+
+  it('keeps retries=0 instead of replacing it with the default', function (done) {
+    const flow = [{ id: 'b1', type: 'kafka-suite-broker', brokers: 'b:9092', retries: '0' }];
+    helper.load(brokerNode, flow, function () {
+      helper.getNode('b1').getAdapterConfig().retries.should.equal(0);
+      done();
     });
   });
 });

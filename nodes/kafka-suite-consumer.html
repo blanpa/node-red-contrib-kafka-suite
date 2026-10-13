@@ -18,7 +18,11 @@
       autoCommit: { value: true },
       autoCommitInterval: { value: 5000, validate: RED.validators.number() },
       messageFormat: { value: 'string' },
+      keyFormat: { value: 'string' },
+      headersProperty: { value: 'headers' },
       concurrency: { value: 1, validate: RED.validators.number() },
+      sessionTimeout: { value: 30000, validate: RED.validators.number() },
+      heartbeatInterval: { value: 3000, validate: RED.validators.number() },
       schemaRegistry: {
         value: '',
         type: 'kafka-suite-schema-registry',
@@ -28,7 +32,7 @@
     },
     inputs: 1,
     outputs: 1,
-    inputLabels: ['control (pause/resume)'],
+    inputLabels: ['control (pause/resume/commit)'],
     outputLabels: ['message'],
     icon: 'kafka.svg',
     label: function () {
@@ -46,6 +50,7 @@
       }
       $('#node-input-autoCommit').on('change', updateCommitFields);
       updateCommitFields();
+      $('#node-input-headersProperty').typedInput({ types: ['msg'] });
     }
   });
 </script>
@@ -83,6 +88,17 @@
       <option value="raw">Raw (Buffer)</option>
     </select>
   </div>
+  <div class="form-row">
+    <label for="node-input-keyFormat"><i class="fa fa-key"></i> Key format</label>
+    <select id="node-input-keyFormat">
+      <option value="string">String (UTF-8)</option>
+      <option value="raw">Raw (Buffer)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-headersProperty"><i class="fa fa-list-ul"></i> Headers to</label>
+    <input type="text" id="node-input-headersProperty" placeholder="headers">
+  </div>
   <hr>
   <div class="form-row">
     <label for="node-input-autoCommit"><i class="fa fa-check"></i> Auto Commit</label>
@@ -97,6 +113,14 @@
   <div class="form-row">
     <label for="node-input-concurrency"><i class="fa fa-bolt"></i> Concurrency</label>
     <input type="number" id="node-input-concurrency" placeholder="1" min="1">
+  </div>
+  <div class="form-row">
+    <label for="node-input-sessionTimeout"><i class="fa fa-clock-o"></i> Session Timeout</label>
+    <input type="number" id="node-input-sessionTimeout" placeholder="30000"> ms
+  </div>
+  <div class="form-row">
+    <label for="node-input-heartbeatInterval"><i class="fa fa-heartbeat"></i> Heartbeat</label>
+    <input type="number" id="node-input-heartbeatInterval" placeholder="3000"> ms
   </div>
   <hr>
   <div class="form-row">
@@ -114,8 +138,8 @@
     <dd>The decoded message value (format depends on configuration).</dd>
     <dt>topic <span class="property-type">string</span></dt>
     <dd>The source Kafka topic.</dd>
-    <dt>key <span class="property-type">string | null</span></dt>
-    <dd>The message key.</dd>
+    <dt>key <span class="property-type">string | buffer | null</span></dt>
+    <dd>The message key (a Buffer when <b>Key format</b> is Raw).</dd>
     <dt>partition <span class="property-type">number</span></dt>
     <dd>The source partition number.</dd>
     <dt>offset <span class="property-type">string</span></dt>
@@ -123,7 +147,8 @@
     <dt>timestamp <span class="property-type">string</span></dt>
     <dd>The message timestamp.</dd>
     <dt>headers <span class="property-type">object</span></dt>
-    <dd>Message headers as key-value pairs.</dd>
+    <dd>Message headers as key-value pairs, written to the property set in
+    <b>Headers to</b> (default <code>msg.headers</code>).</dd>
     <dt>kafka <span class="property-type">object</span></dt>
     <dd>Consumer metadata: <code>{ consumerGroup }</code></dd>
     <dt class="optional">commit <span class="property-type">function</span></dt>
@@ -133,13 +158,25 @@
   <h3>Inputs (Control)</h3>
   <dl class="message-properties">
     <dt>action <span class="property-type">string</span></dt>
-    <dd><code>"pause"</code> to pause consuming, <code>"resume"</code> to resume.</dd>
+    <dd><code>"pause"</code> to pause consuming, <code>"resume"</code> to resume,
+    <code>"commit"</code> to commit a processed message.</dd>
+    <dt class="optional">topic / partition / offset</dt>
+    <dd>Required for <code>"commit"</code>: the coordinates of the processed
+    message. A message emitted by this node already carries them.</dd>
   </dl>
 
   <h3>Details</h3>
   <p>The consumer joins a consumer group and receives messages from the configured topics.
   Multiple consumers with the same Group ID will share partitions across instances.</p>
-  <p>When auto-commit is disabled, you must call <code>msg.commit()</code> after processing
-  each message to acknowledge it. Failing to commit will cause the message to be
-  redelivered on reconnection.</p>
+  <p>When auto-commit is disabled, acknowledge each processed message, either by
+  calling <code>msg.commit()</code> in a function node or by sending the message back
+  into this node with <code>msg.action = "commit"</code> (e.g. via a change node).
+  The second way keeps working after the message was serialized or copied, where
+  a function on <code>msg</code> would be lost. Uncommitted messages are redelivered
+  after a restart or rebalance.</p>
+  <p>If the consumer crashes for good (e.g. a non-retriable error), the node shows
+  <i>consumer crashed</i> and rebuilds the consumer with exponential backoff.</p>
+  <p><b>Headers to</b>: <code>msg.headers</code> is also used by the HTTP nodes.
+  When the message goes on to an <code>http request</code>/<code>http response</code>
+  node, set this to e.g. <code>kafkaHeaders</code>.</p>
 </script>
